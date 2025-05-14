@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Facebook Limiter</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+  <h1>Facebook Limiter</h1>
+  <div class="time-display">
+    <p>Time Spent Today: <span id="timeSpent">0:00</span></p>
+    <div class="progress-container">
+      <div id="timeProgress" class="progress-bar"></div>
+    </div>
+    <p class="time-remaining" id="timeRemaining"></p>
+  </div>
+  <div class="settings">
+    <label for="timeLimit">Daily Time Limit (minutes):</label>
+    <input type="number" id="timeLimit" min="1" max="240" value="30">
+    <button id="saveButton">Save Limit</button>
+    <div class="button-row">
+      <button id="resetTimeButton" class="secondary-button">Reset Time</button>
+    </div>
+  </div>
+  <div class="debug-section" style="margin-top: 15px; border-top: 1px solid #ddd; padding-top: 10px;">
+    <button id="refreshButton" style="background-color: #5a5a5a;">Refresh Stats</button>
+    <button id="resetSettingsButton" style="background-color: #d73a49; margin-top: 5px;">Reset All Settings</button>
+    <div id="debugInfo" style="font-size: 11px; margin-top: 10px; color: #666;"></div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+
+</html>

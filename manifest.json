@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "Facebook Limiter",
+  "version": "1.0",
+  "description": "Limits daily time spent on Facebook.",
+  "permissions": ["storage", "webNavigation", "tabs", "notifications"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.facebook.com/*"],
+      "js": ["content.js", "reconnect.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["blocked.html"],
+      "matches": ["*://*.facebook.com/*"]
+    }
+  ],
+  "icons": {
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
+}
