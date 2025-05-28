@@ -1,18 +1,49 @@
-/* Facebook Limiter Extension Styles */
+/* Website Time Limiter Extension Styles */
 body {
-  width: 300px;
+  width: 350px;
   padding: 15px;
   font-family: Arial, sans-serif;
   color: #333;
+  max-height: 600px;
+  overflow-y: auto;
 }
 
 h1 {
   font-size: 20px;
   text-align: center;
-  color: #4267b2; /* Facebook blue */
+  color: #4285f4; /* Google blue */
   margin-bottom: 15px;
   border-bottom: 1px solid #e0e0e0;
   padding-bottom: 10px;
+}
+
+h2 {
+  font-size: 16px;
+  margin-top: 0;
+  margin-bottom: 10px;
+  color: #222;
+  word-break: break-all;
+}
+
+h3 {
+  font-size: 14px;
+  margin-top: 15px;
+  margin-bottom: 10px;
+  border-top: 1px solid #e0e0e0;
+  padding-top: 15px;
+}
+
+.website-selector {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 15px;
+}
+
+.website-selector select {
+  flex: 1;
+  padding: 8px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
 }
 
 .time-display {
@@ -121,4 +152,121 @@ button:active {
 
 .secondary-button:hover {
   background-color: #e4e6eb;
+}
+
+/* New styles for website selector and forms */
+.action-button {
+  padding: 8px 10px;
+  background-color: #34a853; /* Google green */
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.action-button:hover {
+  background-color: #2d9249;
+}
+
+.form-group {
+  margin-bottom: 10px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 12px;
+  color: #555;
+}
+
+.form-group input {
+  width: 100%;
+  padding: 8px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+}
+
+.website-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.primary-button {
+  background-color: #4285f4; /* Google blue */
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  cursor: pointer;
+}
+
+.primary-button:hover {
+  background-color: #3367d6;
+}
+
+.secondary-button {
+  background-color: #5f6368; /* Google gray */
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  cursor: pointer;
+}
+
+.warning-button {
+  background-color: #f4b400; /* Google yellow */
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  cursor: pointer;
+}
+
+.danger-button {
+  background-color: #ea4335; /* Google red */
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  cursor: pointer;
+}
+
+.neutral-button {
+  background-color: #5f6368; /* Google gray */
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  cursor: pointer;
+}
+
+.add-website {
+  border-radius: 5px;
+  padding: 10px;
+  background-color: #f7f7f7;
+  margin-bottom: 15px;
+}
+
+.debug-section {
+  margin-top: 15px;
+  border-top: 1px solid #ddd;
+  padding-top: 10px;
+  font-size: 11px;
+  color: #666;
+}
+
+#debugInfo {
+  margin-top: 10px;
+  font-family: monospace;
+  font-size: 10px;
+  max-height: 100px;
+  overflow-y: auto;
+}
+
+#currentWebsite {
+  word-break: break-all;
+  max-width: 100%;
 }

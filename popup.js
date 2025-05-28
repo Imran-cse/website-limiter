@@ -1,4 +1,10 @@
 document.addEventListener("DOMContentLoaded", () => {
+  // Initialize website selector and current website
+  let currentWebsite = "";
+
+  // Populate website selector dropdown from storage
+  populateWebsiteSelector();
+
   // Update display with current stats
   updateDisplay();
 
@@ -9,6 +15,101 @@ document.addEventListener("DOMContentLoaded", () => {
   if (typeof updateDebugInfo === "function") {
     updateDebugInfo();
   }
+
+  // Handle website selection change
+  document
+    .getElementById("websiteSelect")
+    .addEventListener("change", function () {
+      currentWebsite = this.value;
+      updateDisplay();
+    });
+
+  // Handle adding the current website
+  document.getElementById("addCurrentButton").addEventListener("click", () => {
+    getCurrentTab().then((tab) => {
+      if (tab && tab.url) {
+        const domain = extractDomain(tab.url);
+        if (domain) {
+          // Default time limit is 30 minutes
+          addWebsite(domain, 30);
+        } else {
+          showNotification("Could not determine website domain", "error");
+        }
+      } else {
+        showNotification("Could not access current tab", "error");
+      }
+    });
+  });
+
+  // Handle adding a new website
+  document.getElementById("addWebsiteButton").addEventListener("click", (e) => {
+    e.preventDefault();
+    const websiteInput = document.getElementById("newWebsiteDomain");
+    const timeLimitInput = document.getElementById("newWebsiteLimit");
+
+    let website = websiteInput.value.trim();
+    const timeLimit = parseInt(timeLimitInput.value, 10);
+
+    // Simple validation
+    if (!website) {
+      showNotification("Please enter a website domain", "error");
+      return;
+    }
+
+    // Add protocol if not present for URL parsing
+    if (!website.includes("://")) {
+      website = "http://" + website;
+    }
+
+    try {
+      const domain = extractDomain(website);
+      if (domain && timeLimit >= 1 && timeLimit <= 240) {
+        addWebsite(domain, timeLimit);
+        websiteInput.value = "";
+        timeLimitInput.value = "30";
+      } else {
+        showNotification(
+          "Please enter a valid domain and time limit (1-240 minutes)",
+          "error"
+        );
+      }
+    } catch (e) {
+      console.error("Error parsing website:", e);
+      showNotification("Please enter a valid website domain", "error");
+    }
+  });
+
+  // Handle removing selected website
+  document
+    .getElementById("removeWebsiteButton")
+    .addEventListener("click", () => {
+      const selectedWebsite = document.getElementById("websiteSelect").value;
+
+      if (selectedWebsite) {
+        if (
+          confirm(
+            `Are you sure you want to remove "${selectedWebsite}" from tracking?`
+          )
+        ) {
+          sendMessageWithRetry(
+            { action: "removeWebsite", domain: selectedWebsite },
+            (response) => {
+              if (response && response.success) {
+                populateWebsiteSelector();
+                showNotification(
+                  `Removed "${selectedWebsite}" from tracking`,
+                  "success"
+                );
+              } else if (response && response.error) {
+                showNotification(`Error: ${response.error}`, "error");
+              }
+            }
+          );
+        }
+      } else {
+        showNotification("Please select a website to remove", "error");
+      }
+    });
 
   // Add refresh button functionality
   document.getElementById("refreshButton").addEventListener("click", () => {
@@ -39,6 +140,7 @@ document.addEventListener("DOMContentLoaded", () => {
         sendMessageWithRetry({ action: "resetAllSettings" }, (response) => {
           if (response && response.success) {
             document.getElementById("timeLimit").value = 30;
+            populateWebsiteSelector();
             updateDisplay();
 
             const status = document.createElement("div");
@@ -62,43 +164,56 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Add reset time button functionality
   document.getElementById("resetTimeButton").addEventListener("click", () => {
+    const selectedWebsite = document.getElementById("websiteSelect").value;
+
+    if (!selectedWebsite) {
+      showNotification("Please select a website first", "error");
+      return;
+    }
+
     if (
-      confirm("Are you sure you want to reset your Facebook time for today?")
+      confirm(
+        `Are you sure you want to reset your time for ${selectedWebsite} today?`
+      )
     ) {
-      sendMessageWithRetry({ action: "resetTime" }, (response) => {
-        if (response && response.success) {
-          updateDisplay();
-          if (typeof updateDebugInfo === "function") {
-            updateDebugInfo();
-          }
-
-          const status = document.createElement("div");
-          status.textContent = "Time counter has been reset!";
-          status.style.color = "green";
-          status.style.textAlign = "center";
-          status.style.marginTop = "10px";
-          document.body.appendChild(status);
-
-          setTimeout(() => {
-            if (status.parentNode) {
-              status.parentNode.removeChild(status);
+      sendMessageWithRetry(
+        { action: "resetWebsiteTime", domain: selectedWebsite },
+        (response) => {
+          if (response && response.success) {
+            updateDisplay();
+            if (typeof updateDebugInfo === "function") {
+              updateDebugInfo();
             }
-          }, 3000);
-        } else if (response && response.error) {
-          alert("Error resetting time: " + response.error);
+
+            showNotification(
+              `Time counter for ${selectedWebsite} has been reset!`,
+              "success"
+            );
+          } else if (response && response.error) {
+            showNotification(
+              `Error resetting time: ${response.error}`,
+              "error"
+            );
+          }
         }
-      });
+      );
     }
   });
 
   // Save new time limit
   document.getElementById("saveButton").addEventListener("click", () => {
+    const selectedWebsite = document.getElementById("websiteSelect").value;
+    if (!selectedWebsite) {
+      showNotification("Please select a website first", "error");
+      return;
+    }
+
     const timeLimitInput = document.getElementById("timeLimit");
     let timeLimit = parseInt(timeLimitInput.value, 10);
 
     if (timeLimit >= 1 && timeLimit <= 240) {
       console.log(
-        `Saving new time limit: ${timeLimit} minutes (${
+        `Saving new time limit for ${selectedWebsite}: ${timeLimit} minutes (${
           timeLimit * 60
         } seconds)`
       );
@@ -112,31 +227,23 @@ document.addEventListener("DOMContentLoaded", () => {
       timeLimitInput.value = timeLimit;
 
       sendMessageWithRetry(
-        { action: "setTimeLimit", timeLimit },
+        { action: "updateWebsiteLimit", domain: selectedWebsite, timeLimit },
         (response) => {
           // Re-enable button
           saveButton.disabled = false;
           saveButton.textContent = "Save Limit";
 
-          if (response && !response.error) {
+          if (response && response.success) {
             console.log("Save response:", response);
-
-            // Add a saved feedback directly in the popup
-            const status = document.createElement("div");
-            status.textContent = `Time limit set to ${timeLimit} minutes`;
-            status.style.color = "green";
-            status.style.textAlign = "center";
-            status.style.marginTop = "10px";
-            document.body.appendChild(status);
-
-            // Remove the message after 3 seconds
-            setTimeout(() => {
-              if (status.parentNode) {
-                status.parentNode.removeChild(status);
-              }
-            }, 3000);
+            showNotification(
+              `Time limit for ${selectedWebsite} set to ${timeLimit} minutes`,
+              "success"
+            );
           } else if (response && response.error) {
-            alert("Error saving time limit: " + response.error);
+            showNotification(
+              `Error saving time limit: ${response.error}`,
+              "error"
+            );
           }
         }
       );
@@ -198,7 +305,142 @@ function sendMessageWithRetry(message, callback, retryCount = 0) {
   }
 }
 
-// Function to update the display with latest data
+// Helper function to populate the website selector dropdown
+function populateWebsiteSelector() {
+  const selector = document.getElementById("websiteSelect");
+
+  // Clear existing options except the default one
+  while (selector.options.length > 1) {
+    selector.remove(1);
+  }
+
+  chrome.storage.local.get(["websiteData"], (data) => {
+    const websiteData = data.websiteData || {};
+
+    // Add each website to the dropdown
+    Object.keys(websiteData)
+      .sort()
+      .forEach((domain) => {
+        const option = document.createElement("option");
+        option.value = domain;
+        option.textContent = domain;
+        selector.appendChild(option);
+      });
+
+    // If we have websites but none selected, select the first one
+    if (selector.options.length > 1 && !selector.value) {
+      selector.selectedIndex = 1;
+      // Trigger a change event to update the display
+      const event = new Event("change");
+      selector.dispatchEvent(event);
+    }
+  });
+}
+
+// Helper function to extract domain from URL
+function extractDomain(url) {
+  try {
+    const urlObj = new URL(url);
+    // Get hostname (e.g., www.facebook.com) and extract main domain
+    let domain = urlObj.hostname;
+
+    // Remove www. prefix if present
+    if (domain.startsWith("www.")) {
+      domain = domain.substring(4);
+    }
+
+    return domain;
+  } catch (e) {
+    console.error("Error extracting domain:", e);
+    return null;
+  }
+}
+
+// Get the current active tab
+async function getCurrentTab() {
+  try {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    return tabs[0];
+  } catch (e) {
+    console.error("Error getting current tab:", e);
+    return null;
+  }
+}
+
+// Helper function to add a new website
+function addWebsite(domain, timeLimit) {
+  sendMessageWithRetry(
+    {
+      action: "addWebsite",
+      domain: domain,
+      timeLimit: timeLimit,
+    },
+    (response) => {
+      if (response && response.success) {
+        showNotification(
+          `Added "${domain}" with ${timeLimit} minute limit`,
+          "success"
+        );
+        populateWebsiteSelector();
+
+        // Select the newly added website
+        setTimeout(() => {
+          const selector = document.getElementById("websiteSelect");
+          for (let i = 0; i < selector.options.length; i++) {
+            if (selector.options[i].value === domain) {
+              selector.selectedIndex = i;
+              // Trigger change event
+              const event = new Event("change");
+              selector.dispatchEvent(event);
+              break;
+            }
+          }
+        }, 100);
+      } else if (response && response.error) {
+        showNotification(`Error: ${response.error}`, "error");
+      }
+    }
+  );
+}
+
+// Helper function to show notifications in the popup
+function showNotification(message, type = "info") {
+  const status = document.createElement("div");
+  status.textContent = message;
+  status.style.textAlign = "center";
+  status.style.marginTop = "10px";
+  status.style.padding = "5px";
+
+  // Set color based on notification type
+  switch (type) {
+    case "success":
+      status.style.color = "white";
+      status.style.backgroundColor = "green";
+      break;
+    case "error":
+      status.style.color = "white";
+      status.style.backgroundColor = "red";
+      break;
+    case "warning":
+      status.style.color = "black";
+      status.style.backgroundColor = "yellow";
+      break;
+    default:
+      status.style.color = "white";
+      status.style.backgroundColor = "blue";
+  }
+
+  document.body.appendChild(status);
+
+  // Remove the message after 3 seconds
+  setTimeout(() => {
+    if (status.parentNode) {
+      status.parentNode.removeChild(status);
+    }
+  }, 3000);
+}
+
+// Function to update the display with latest data for the selected website
 function updateDisplay() {
   if (!isExtensionContextValid()) {
     console.error("Extension context invalid during updateDisplay");
@@ -228,91 +470,127 @@ function updateDisplay() {
     errorMsg.parentNode.removeChild(errorMsg);
   }
 
-  chrome.storage.local.get(
-    ["timeSpent", "timeLimit", "lastResetDate"],
-    (data) => {
-      // Make sure we have numeric values
-      const timeSpentSecs =
-        typeof data.timeSpent === "number" ? data.timeSpent : 0;
+  // Get the selected website
+  const selectedWebsite = document.getElementById("websiteSelect").value;
 
-      // Display time spent in mm:ss format
-      const timeSpentMinutes = Math.floor(timeSpentSecs / 60);
-      const timeSpentSeconds = timeSpentSecs % 60;
-      document.getElementById("timeSpent").textContent = `${timeSpentMinutes}:${
-        timeSpentSeconds < 10 ? "0" : ""
-      }${timeSpentSeconds}`;
+  // Enable or disable controls based on website selection
+  const controls = document.querySelectorAll(
+    ".website-controls button, .website-controls input"
+  );
+  controls.forEach((control) => {
+    control.disabled = !selectedWebsite;
+  });
 
-      // Log current time values for debugging
-      console.log(
-        `Time spent: ${timeSpentSecs}s (${timeSpentMinutes}m ${timeSpentSeconds}s)`
+  // Update site name display if available
+  const siteNameDisplay = document.getElementById("selectedSiteName");
+  if (siteNameDisplay) {
+    siteNameDisplay.textContent = selectedWebsite || "No website selected";
+  }
+
+  // If no website is selected, clear stats display
+  if (!selectedWebsite) {
+    document.getElementById("timeSpent").textContent = "--:--";
+    document.getElementById("timeLimit").value = "30";
+
+    const progressBar = document.getElementById("timeProgress");
+    if (progressBar) {
+      progressBar.style.width = "0%";
+      progressBar.className = "progress-bar";
+    }
+
+    const timeRemaining = document.getElementById("timeRemaining");
+    if (timeRemaining) {
+      timeRemaining.textContent = "No data";
+    }
+
+    return;
+  }
+
+  chrome.storage.local.get(["websiteData", "lastResetDate"], (data) => {
+    const websiteData = data.websiteData || {};
+    const siteData = websiteData[selectedWebsite] || {
+      timeSpent: 0,
+      timeLimit: 1800,
+    };
+
+    // Make sure we have numeric values
+    const timeSpentSecs =
+      typeof siteData.timeSpent === "number" ? siteData.timeSpent : 0;
+    const timeLimitSecs =
+      typeof siteData.timeLimit === "number" ? siteData.timeLimit : 1800;
+
+    // Display time spent in mm:ss format
+    const timeSpentMinutes = Math.floor(timeSpentSecs / 60);
+    const timeSpentSeconds = timeSpentSecs % 60;
+    document.getElementById("timeSpent").textContent = `${timeSpentMinutes}:${
+      timeSpentSeconds < 10 ? "0" : ""
+    }${timeSpentSeconds}`;
+
+    // Log current time values for debugging
+    console.log(
+      `Time spent on ${selectedWebsite}: ${timeSpentSecs}s (${timeSpentMinutes}m ${timeSpentSeconds}s)`
+    );
+
+    // Calculate time limit in minutes
+    let timeLimitMins = Math.floor(timeLimitSecs / 60);
+
+    console.log(
+      `Time limit for ${selectedWebsite}: ${timeLimitSecs}s (${timeLimitMins}m)`
+    );
+
+    // Only update the input value if it's not currently focused (to prevent overriding user input)
+    const timeLimitInput = document.getElementById("timeLimit");
+    if (timeLimitInput && document.activeElement !== timeLimitInput) {
+      timeLimitInput.value = timeLimitMins;
+    }
+
+    // Update progress bar if it exists
+    const progressBar = document.getElementById("timeProgress");
+    if (progressBar) {
+      const progressPercent = Math.min(
+        100,
+        (timeSpentSecs / timeLimitSecs) * 100
       );
+      progressBar.style.width = `${progressPercent}%`;
 
-      // Display time limit (in minutes) - make sure we always have a valid number
-      const timeLimitSecs = data.timeLimit;
-      let timeLimitMins = 30; // Default value if not set
-
-      if (typeof timeLimitSecs === "number" && timeLimitSecs > 0) {
-        timeLimitMins = Math.floor(timeLimitSecs / 60);
-      }
-
-      console.log(
-        `Time limit from storage: ${timeLimitSecs}s (${timeLimitMins}m)`
-      );
-
-      // Only update the input value if it's not currently focused (to prevent overriding user input)
-      const timeLimitInput = document.getElementById("timeLimit");
-      if (timeLimitInput && document.activeElement !== timeLimitInput) {
-        timeLimitInput.value = timeLimitMins;
-      }
-
-      // Update progress bar if it exists
-      const progressBar = document.getElementById("timeProgress");
-      if (progressBar) {
-        const progressPercent = Math.min(
-          100,
-          (timeSpentSecs / timeLimitSecs) * 100
-        );
-        progressBar.style.width = `${progressPercent}%`;
-
-        // Update progress bar color based on usage
-        if (progressPercent >= 90) {
-          progressBar.className = "progress-bar danger";
-        } else if (progressPercent >= 75) {
-          progressBar.className = "progress-bar warning";
-        } else {
-          progressBar.className = "progress-bar";
-        }
-      }
-
-      // Show time remaining if element exists
-      const timeRemaining = document.getElementById("timeRemaining");
-      if (timeRemaining) {
-        const secondsRemaining = Math.max(0, timeLimitSecs - timeSpentSecs);
-        const minutesRemaining = Math.floor(secondsRemaining / 60);
-        const secondsRemainingDisplay = secondsRemaining % 60;
-
-        timeRemaining.textContent = `${minutesRemaining}:${
-          secondsRemainingDisplay < 10 ? "0" : ""
-        }${secondsRemainingDisplay} remaining today`;
-      }
-
-      // Show last reset date if available
-      if (data.lastResetDate) {
-        const lastReset = new Date(data.lastResetDate).toLocaleDateString();
-
-        // Create or update the reset date element
-        let resetElem = document.getElementById("resetDate");
-        if (!resetElem) {
-          resetElem = document.createElement("p");
-          resetElem.id = "resetDate";
-          document
-            .querySelector("h1")
-            .insertAdjacentElement("afterend", resetElem);
-        }
-        resetElem.textContent = `Stats last reset: ${lastReset}`;
+      // Update progress bar color based on usage
+      if (progressPercent >= 90) {
+        progressBar.className = "progress-bar danger";
+      } else if (progressPercent >= 75) {
+        progressBar.className = "progress-bar warning";
+      } else {
+        progressBar.className = "progress-bar";
       }
     }
-  );
+
+    // Show time remaining if element exists
+    const timeRemaining = document.getElementById("timeRemaining");
+    if (timeRemaining) {
+      const secondsRemaining = Math.max(0, timeLimitSecs - timeSpentSecs);
+      const minutesRemaining = Math.floor(secondsRemaining / 60);
+      const secondsRemainingDisplay = secondsRemaining % 60;
+
+      timeRemaining.textContent = `${minutesRemaining}:${
+        secondsRemainingDisplay < 10 ? "0" : ""
+      }${secondsRemainingDisplay} remaining today`;
+    }
+
+    // Show last reset date if available
+    if (data.lastResetDate) {
+      const lastReset = new Date(data.lastResetDate).toLocaleDateString();
+
+      // Create or update the reset date element
+      let resetElem = document.getElementById("resetDate");
+      if (!resetElem) {
+        resetElem = document.createElement("p");
+        resetElem.id = "resetDate";
+        document
+          .querySelector("h1")
+          .insertAdjacentElement("afterend", resetElem);
+      }
+      resetElem.textContent = `Stats last reset: ${lastReset}`;
+    }
+  });
 }
 
 // Debug storage directly - for troubleshooting

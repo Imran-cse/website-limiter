@@ -2,7 +2,7 @@
 <html>
 
 <head>
-  <title>Facebook Time Limit Reached</title>
+  <title>Website Time Limit Reached</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -12,8 +12,8 @@
       align-items: center;
       height: 100vh;
       margin: 0;
-      background-color: #f0f2f5;
-      color: #1c1e21;
+      background-color: #f5f5f5;
+      color: #333;
     }
 
     .container {
@@ -26,8 +26,13 @@
     }
 
     h1 {
-      color: #4267B2;
+      color: #2c3e50;
       margin-bottom: 1rem;
+    }
+
+    .website-name {
+      font-weight: bold;
+      color: #e74c3c;
     }
 
     p {
@@ -40,6 +45,23 @@
       font-size: 1.5rem;
       font-weight: bold;
       margin: 1.5rem 0;
+      color: #2980b9;
+    }
+
+    .button {
+      display: inline-block;
+      margin-top: 1rem;
+      padding: 0.5rem 1rem;
+      background-color: #3498db;
+      color: white;
+      border-radius: 4px;
+      text-decoration: none;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    .button:hover {
+      background-color: #2980b9;
     }
   </style>
 </head>
@@ -47,15 +69,25 @@
 <body>
   <div class="container">
     <h1>Time Limit Reached</h1>
-    <p>You've reached your daily Facebook usage limit.</p>
-    <p>Taking a break from social media can improve your productivity and mental well-being.</p>
+    <p>You've reached your daily usage limit for <span id="websiteName" class="website-name">this website</span>.</p>
+    <p>Taking regular breaks from browsing can improve your productivity and mental well-being.</p>
     <div class="time" id="timeRemaining">
       Next reset: <span id="countdown">Loading...</span>
     </div>
-    <p>You can adjust your time limit in the Facebook Limiter extension settings.</p>
+    <p>You can adjust your time limits in the Website Time Limiter extension settings.</p>
+    <button id="openSettings" class="button">Open Extension Settings</button>
   </div>
 
   <script>
+    // Get domain from URL parameters
+    function getDomainFromUrl() {
+      const urlParams = new URLSearchParams(window.location.search);
+      return urlParams.get('domain') || 'this website';
+    }
+
+    // Display the website name
+    document.getElementById('websiteName').textContent = getDomainFromUrl();
+
     // Calculate and display time until midnight
     function updateCountdown() {
       const now = new Date();
@@ -72,6 +104,16 @@
       document.getElementById('countdown').textContent =
         `${hours}h ${minutes}m ${seconds}s`;
     }
+
+    // Open extension popup when button is clicked
+    document.getElementById('openSettings').addEventListener('click', function () {
+      if (chrome.runtime && chrome.runtime.openOptionsPage) {
+        chrome.runtime.openOptionsPage();
+      } else {
+        // Fallback - open extension popup
+        chrome.runtime.sendMessage({ action: "openPopup" });
+      }
+    });
 
     // Update countdown every second
     updateCountdown();

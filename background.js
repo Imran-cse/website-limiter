@@ -1,8 +1,14 @@
-let timeSpent = 0; // Time spent on Facebook today (seconds)
-let timeLimit = 30 * 60; // Default 30 minutes (in seconds)
+// Website Time Limiter - Background Script
+
+// Store time data for multiple websites
+let websiteData = {}; // Format: { domain: { timeSpent: seconds, timeLimit: seconds } }
 let lastResetDate = new Date().toDateString();
-let activeTabsMap = new Map(); // Track active Facebook tabs and their status
+let activeTabsMap = new Map(); // Track active tabs and their status: Map<tabId, {domain, isActive}>
 let timerInterval = null;
+
+// Legacy variables for backward compatibility
+let timeSpent = 0;
+let timeLimit = 30 * 60; // 30 minutes in seconds
 
 // Keep track of last initialization time
 let lastInitializeTime = 0;
@@ -17,14 +23,41 @@ const initialize = async () => {
   }
 
   lastInitializeTime = now;
-  console.log("Initializing Facebook Limiter extension");
+  console.log("Initializing Website Time Limiter extension");
 
   try {
     const data = await chrome.storage.local.get([
-      "timeSpent",
-      "timeLimit",
+      "websiteData",
       "lastResetDate",
     ]);
+
+    // Initialize website data structure if it doesn't exist
+    websiteData = data.websiteData || {};
+
+    // Attempt to migrate old data format if needed
+    if (
+      !data.websiteData &&
+      data.timeSpent !== undefined &&
+      data.timeLimit !== undefined
+    ) {
+      console.log("Migrating from old data format");
+      // Add Facebook as the initial website with the old time data
+      websiteData["facebook.com"] = {
+        timeSpent: data.timeSpent || 0,
+        timeLimit: data.timeLimit || 1800, // 30 minutes in seconds
+      };
+
+      // Save the migrated data
+      await chrome.storage.local.set({ websiteData });
+    }
+
+    // Initialize lastResetDate
+    if (data.lastResetDate) {
+      lastResetDate = data.lastResetDate;
+    }
+
+    // Check if we need to reset daily counts
+    resetDailyData();
 
     console.log("Loaded storage data:", data);
 
@@ -74,10 +107,14 @@ const initialize = async () => {
   startTimer();
 };
 
-// Start the timer that increments time spent when Facebook tabs are active
+// Start the timer that increments time spent when tracked websites are active
 const startTimer = () => {
   if (timerInterval !== null) {
     // Clear any existing interval just to be safe
+    if (websiteData["facebook.com"]) {
+      timeSpent = websiteData["facebook.com"].timeSpent;
+      timeLimit = websiteData["facebook.com"].timeLimit;
+    }
     try {
       clearInterval(timerInterval);
       timerInterval = null;
@@ -93,76 +130,85 @@ const startTimer = () => {
   timerInterval = setInterval(async () => {
     try {
       // Log timer tick for debugging
-      console.log("Timer tick: checking for active Facebook tabs...");
+      console.log("Timer tick: checking for active tracked websites...");
 
-      // Only increment time if at least one Facebook tab is active
-      let activeFacebookTabs = false;
-      let activeTabIds = [];
+      // Track active domains
+      const activeDomains = new Map(); // Map of domain -> tab count
+      const activeTabIds = [];
 
-      // Check if we have any active Facebook tabs
+      // Check if we have any active tabs to track
       const tabMapSize = activeTabsMap.size;
       console.log(`Active tabs map contains ${tabMapSize} tabs`);
 
       if (tabMapSize > 0) {
-        for (const [tabId, isActive] of activeTabsMap.entries()) {
-          if (isActive) {
-            activeFacebookTabs = true;
+        // Verify tabs actually exist (they might have been closed without proper events)
+        const tabs = await chrome.tabs.query({});
+        const existingTabIds = tabs.map((tab) => tab.id);
+
+        // Clean up our map by removing non-existent tabs
+        for (const tabId of activeTabsMap.keys()) {
+          if (!existingTabIds.includes(tabId)) {
+            activeTabsMap.delete(tabId);
+            continue;
+          }
+
+          // Get tab data
+          const tabData = activeTabsMap.get(tabId);
+
+          // Skip inactive tabs or tabs without valid domains
+          if (!tabData?.isActive || !tabData?.domain) {
+            continue;
+          }
+
+          // Only count domains we're tracking
+          if (shouldTrackDomain(tabData.domain)) {
+            activeDomains.set(
+              tabData.domain,
+              (activeDomains.get(tabData.domain) || 0) + 1
+            );
             activeTabIds.push(tabId);
           }
         }
-
-        console.log(
-          `Found ${activeTabIds.length} active tabs out of ${tabMapSize}`
-        );
       }
 
-      // Verify tabs actually exist (they might have been closed without proper events)
-      if (activeFacebookTabs && activeTabIds.length > 0) {
-        try {
-          const tabs = await chrome.tabs.query({});
-          const existingTabIds = tabs.map((tab) => tab.id);
+      // Process each active domain
+      if (activeDomains.size > 0) {
+        console.log(
+          `Incrementing time for ${activeDomains.size} active domains across ${activeTabIds.length} tab(s)`
+        );
 
-          // Filter only tabs that still exist
-          const validActiveTabIds = activeTabIds.filter((id) =>
-            existingTabIds.includes(id)
-          );
+        // Load current website data
+        const data = await chrome.storage.local.get(["websiteData"]);
+        let websiteData = data.websiteData || {};
 
-          // Clean up our map by removing non-existent tabs
-          for (const tabId of activeTabsMap.keys()) {
-            if (!existingTabIds.includes(tabId)) {
-              activeTabsMap.delete(tabId);
-            }
+        // Increment time for each active domain
+        for (const [domain, count] of activeDomains.entries()) {
+          if (!websiteData[domain]) {
+            // Initialize if not exists
+            websiteData[domain] = {
+              timeSpent: 0,
+              timeLimit: 1800, // 30 minutes default
+            };
           }
 
-          // Update active status based on cleaned map
-          activeFacebookTabs = validActiveTabIds.length > 0;
+          // Increment by 1 second
+          websiteData[domain].timeSpent += 1;
 
-          if (activeFacebookTabs) {
+          // Log every minute for debugging
+          if (websiteData[domain].timeSpent % 60 === 0) {
             console.log(
-              `Incrementing time for ${validActiveTabIds.length} active Facebook tab(s)`
+              `Time spent on ${domain} updated: ${Math.floor(
+                websiteData[domain].timeSpent / 60
+              )} minutes`
             );
           }
-        } catch (error) {
-          console.error("Error verifying tabs:", error);
-        }
-      }
-
-      if (activeFacebookTabs) {
-        // Increment and save time immediately
-        timeSpent += 1;
-
-        // Log every minute for debugging
-        if (timeSpent % 60 === 0) {
-          console.log(
-            `Time spent updated: ${Math.floor(timeSpent / 60)} minutes`
-          );
         }
 
-        // Save the time spent
-        await chrome.storage.local.set({ timeSpent });
+        // Save the updated website data
+        await chrome.storage.local.set({ websiteData });
 
         // Handle limit warnings and blocking
-        await checkTimeLimit();
+        await checkTimeLimits(Array.from(activeDomains.keys()));
       }
     } catch (error) {
       console.error("Error in timer:", error);
@@ -170,61 +216,114 @@ const startTimer = () => {
   }, 1000);
 };
 
-// Check if time limit is reached or approaching
-const checkTimeLimit = async () => {
+// Check if time limits are reached or approaching for specified domains
+const checkTimeLimits = async (domains = []) => {
   try {
-    // Warn when approaching time limit (90%)
-    if (timeSpent === Math.floor(timeLimit * 0.9)) {
-      await chrome.notifications.create({
-        type: "basic",
-        iconUrl: "icon48.png",
-        title: "Facebook Limiter",
-        message: `Approaching time limit! ${Math.floor(
-          (timeLimit - timeSpent) / 60
-        )} minutes left.`,
-      });
+    // Get all website data
+    const data = await chrome.storage.local.get(["websiteData"]);
+    const websiteData = data.websiteData || {};
+
+    // If no domains provided, check all domains in websiteData
+    if (!domains || domains.length === 0) {
+      domains = Object.keys(websiteData);
     }
 
-    // Block when time limit is reached
-    if (timeSpent >= timeLimit) {
-      try {
-        // Notify all Facebook tabs that limit is reached
-        const tabs = await chrome.tabs.query({ url: "*://*.facebook.com/*" });
+    // Process each domain
+    for (const domain of domains) {
+      const siteData = websiteData[domain];
+      if (!siteData) continue;
 
-        for (const tab of tabs) {
-          try {
-            await chrome.tabs.sendMessage(tab.id, {
-              action: "timeLimitReached",
-            });
-          } catch (tabError) {
-            console.error(`Error sending message to tab ${tab.id}:`, tabError);
+      const timeSpent = siteData.timeSpent;
+      const timeLimit = siteData.timeLimit;
 
-            // Fallback method: redirect if messaging fails
+      // Skip if no time limit set
+      if (!timeLimit) continue;
+
+      // Warn when approaching time limit (90%)
+      if (timeSpent === Math.floor(timeLimit * 0.9)) {
+        await chrome.notifications.create({
+          type: "basic",
+          iconUrl: "icon48.png",
+          title: "Website Time Limiter",
+          message: `Approaching time limit for ${domain}! ${Math.floor(
+            (timeLimit - timeSpent) / 60
+          )} minutes left.`,
+        });
+      }
+
+      // Block when time limit is reached
+      if (timeSpent >= timeLimit) {
+        try {
+          // Find all tabs for this domain
+          const tabs = await chrome.tabs.query({});
+          const domainTabs = tabs.filter((tab) => {
+            const tabDomain = extractDomain(tab.url);
+            return tabDomain === domain;
+          });
+
+          console.log(
+            `Time limit reached for ${domain}. Blocking ${domainTabs.length} tabs.`
+          );
+
+          // Notify all domain tabs that limit is reached
+          for (const tab of domainTabs) {
             try {
-              await chrome.tabs.update(tab.id, {
-                url:
-                  chrome.runtime.getURL("blocked.html") ||
-                  "data:text/html,<h1>Time Limit Reached</h1><p>You've reached your daily Facebook limit.</p>",
+              await chrome.tabs.sendMessage(tab.id, {
+                action: "timeLimitReached",
+                domain: domain,
               });
-            } catch (redirectError) {
-              console.error(`Error redirecting tab ${tab.id}:`, redirectError);
+            } catch (tabError) {
+              console.error(
+                `Error sending message to tab ${tab.id}:`,
+                tabError
+              );
+
+              // Fallback method: redirect if messaging fails
+              try {
+                const blockedUrl = new URL(
+                  chrome.runtime.getURL("blocked.html")
+                );
+                blockedUrl.searchParams.set("domain", domain);
+
+                await chrome.tabs.update(tab.id, {
+                  url: blockedUrl.toString(),
+                });
+              } catch (redirectError) {
+                console.error(
+                  `Error redirecting tab ${tab.id}:`,
+                  redirectError
+                );
+              }
             }
           }
+        } catch (queryError) {
+          console.error(`Error processing tabs for ${domain}:`, queryError);
         }
-      } catch (queryError) {
-        console.error("Error querying Facebook tabs:", queryError);
       }
     }
   } catch (error) {
-    console.error("Error in checkTimeLimit:", error);
+    console.error("Error in checkTimeLimits:", error);
   }
 };
 
-// Track Facebook tabs being opened
+// Track any website tabs being opened (we'll filter by tracked domains later)
 chrome.webNavigation.onCommitted.addListener((details) => {
-  if (details.url.includes("facebook.com") && details.frameId === 0) {
-    // Track this tab (initially assume not active until content script reports)
-    activeTabsMap.set(details.tabId, false);
+  if (details.frameId === 0 && details.url) {
+    try {
+      const domain = extractDomain(details.url);
+
+      // Track this tab (initially assume not active until content script reports)
+      activeTabsMap.set(details.tabId, {
+        domain,
+        isActive: false,
+        lastUpdateTime: Date.now(),
+      });
+
+      // Log that we're tracking this tab
+      console.log(`Now tracking tab ${details.tabId} (${domain})`);
+    } catch (e) {
+      console.error("Error processing navigation event:", e);
+    }
   }
 });
 
@@ -260,33 +359,44 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "visibilityChange" && sender.tab) {
     const tabId = sender.tab.id;
     const isActive = message.isActive;
+    const tabUrl = sender.tab.url || message.tabUrl;
+    const domain = extractDomain(tabUrl);
 
     // Log the visibility change for debugging
     console.log(
-      `Tab ${tabId} visibility changed to ${isActive}`,
+      `Tab ${tabId} (${domain}) visibility changed to ${isActive}`,
       message.source || "unknown source",
       message.timestamp ? new Date(message.timestamp).toISOString() : ""
     );
 
-    // Update the active tabs map
-    activeTabsMap.set(tabId, isActive);
+    // Update the active tabs map with domain information
+    activeTabsMap.set(tabId, {
+      domain,
+      isActive,
+      lastUpdateTime: Date.now(),
+    });
 
-    // Check current timeSpent for debugging
-    console.log(`Current timeSpent before update: ${timeSpent} seconds`);
+    // Get current active domains for debugging
+    const activeDomains = new Set();
+    Array.from(activeTabsMap.entries())
+      .filter(([_, data]) => data.isActive)
+      .forEach(([_, data]) => {
+        if (data.domain && shouldTrackDomain(data.domain)) {
+          activeDomains.add(data.domain);
+        }
+      });
 
-    // Log active tabs for debugging
-    const activeTabs = Array.from(activeTabsMap.entries())
-      .filter(([_, active]) => active)
-      .map(([id, _]) => id);
-
-    console.log(`Active Facebook tabs: ${activeTabs.length}`, activeTabs);
+    console.log(
+      `Active tracked domains: ${Array.from(activeDomains).join(", ")}`
+    );
 
     // Send a response to acknowledge receipt of the visibility change
     sendResponse({
       received: true,
       tabActive: isActive,
-      timeSpent: timeSpent,
-      activeTabs: activeTabs.length,
+      domain: domain,
+      tracked: shouldTrackDomain(domain),
+      activeTabs: activeDomains.size,
     });
 
     return true; // Required for async response
@@ -317,6 +427,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             `Adding previously unknown tab ${sender.tab.id} to tracking`
           );
           activeTabsMap.set(sender.tab.id, false); // Default to inactive until we get a status
+        }
+      }
+
+      // Update the ping response to get actual values from websiteData if possible
+      let currentTimeSpent = timeSpent;
+      let currentTimeLimit = timeLimit;
+
+      if (sender.tab && sender.tab.url) {
+        const domain = extractDomain(sender.tab.url);
+        if (websiteData[domain]) {
+          currentTimeSpent = websiteData[domain].timeSpent;
+          currentTimeLimit = websiteData[domain].timeLimit;
         }
       }
 
@@ -380,45 +502,159 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
   }
 
-  // Handle time limit update from popup
+  // Handle website specific actions
+  // Add website
+  if (message.action === "addWebsite") {
+    try {
+      const domain = message.domain;
+      const timeLimit = parseInt(message.timeLimit, 10) || 30;
+
+      addWebsite(domain, timeLimit)
+        .then((result) => {
+          sendResponse({ success: result });
+        })
+        .catch((error) => {
+          console.error("Error adding website:", error);
+          sendResponse({ success: false, error: error.message });
+        });
+
+      return true;
+    } catch (error) {
+      console.error("Error in addWebsite handler:", error);
+      sendResponse({ success: false, error: error.message });
+      return true;
+    }
+  }
+
+  // Remove website
+  if (message.action === "removeWebsite") {
+    try {
+      const domain = message.domain;
+
+      removeWebsite(domain)
+        .then((result) => {
+          sendResponse({ success: result });
+        })
+        .catch((error) => {
+          console.error("Error removing website:", error);
+          sendResponse({ success: false, error: error.message });
+        });
+
+      return true;
+    } catch (error) {
+      console.error("Error in removeWebsite handler:", error);
+      sendResponse({ success: false, error: error.message });
+      return true;
+    }
+  }
+
+  // Update website time limit
+  if (message.action === "updateWebsiteLimit") {
+    try {
+      const domain = message.domain;
+      const newLimitMinutes = parseInt(message.timeLimit, 10) || 30;
+
+      updateWebsiteLimit(domain, newLimitMinutes)
+        .then((result) => {
+          sendResponse({ success: result });
+        })
+        .catch((error) => {
+          console.error("Error updating website limit:", error);
+          sendResponse({ success: false, error: error.message });
+        });
+
+      return true;
+    } catch (error) {
+      console.error("Error in updateWebsiteLimit handler:", error);
+      sendResponse({ success: false, error: error.message });
+      return true;
+    }
+  }
+
+  // Reset time for specific website
+  if (message.action === "resetWebsiteTime") {
+    try {
+      const domain = message.domain;
+
+      resetWebsiteTime(domain)
+        .then((result) => {
+          sendResponse({ success: result });
+        })
+        .catch((error) => {
+          console.error("Error resetting website time:", error);
+          sendResponse({ success: false, error: error.message });
+        });
+
+      return true;
+    } catch (error) {
+      console.error("Error in resetWebsiteTime handler:", error);
+      sendResponse({ success: false, error: error.message });
+      return true;
+    }
+  }
+
+  // Legacy handler for time limit update from popup (for backwards compatibility)
   if (message.action === "setTimeLimit") {
     // Make sure we have a valid number
     const newLimitMinutes = parseInt(message.timeLimit, 10) || 30;
-    timeLimit = newLimitMinutes * 60; // Convert minutes to seconds
+    const timeLimitSecs = newLimitMinutes * 60; // Convert minutes to seconds
 
     console.log(
-      `Setting new time limit: ${newLimitMinutes} minutes (${timeLimit} seconds)`
+      `Setting new default time limit: ${newLimitMinutes} minutes (${timeLimitSecs} seconds)`
     );
 
-    chrome.storage.local
-      .set({ timeLimit })
-      .then(() => {
-        console.log("Time limit updated successfully:", timeLimit);
-        sendResponse({ status: "Time limit updated", timeLimit: timeLimit });
-      })
-      .catch((error) => {
-        console.error("Error saving time limit:", error);
-        sendResponse({ status: "Error: " + error.message });
-      });
+    // Add or update facebook.com if it exists in websiteData
+    chrome.storage.local.get(["websiteData"], (data) => {
+      let websiteData = data.websiteData || {};
+
+      // Update facebook.com if it exists
+      if (websiteData["facebook.com"]) {
+        websiteData["facebook.com"].timeLimit = timeLimitSecs;
+      }
+
+      chrome.storage.local
+        .set({ websiteData })
+        .then(() => {
+          console.log("Time limit updated successfully:", timeLimitSecs);
+          sendResponse({
+            status: "Time limit updated",
+            timeLimit: timeLimitSecs,
+          });
+        })
+        .catch((error) => {
+          console.error("Error saving time limit:", error);
+          sendResponse({ status: "Error: " + error.message });
+        });
+    });
+
     return true; // Required for async response
   }
 
-  // Handle manual time reset from popup
+  // Legacy handler for manual time reset from popup (for backwards compatibility)
   if (message.action === "resetTime") {
     try {
-      timeSpent = 0;
-      lastResetDate = new Date().toDateString();
+      // Reset facebook.com if it exists
+      chrome.storage.local.get(["websiteData"], (data) => {
+        let websiteData = data.websiteData || {};
 
-      chrome.storage.local
-        .set({ timeSpent, lastResetDate })
-        .then(() => {
-          console.log("Time counter manually reset");
-          sendResponse({ success: true });
-        })
-        .catch((error) => {
-          console.error("Error resetting time:", error);
-          sendResponse({ success: false, error: error.message });
-        });
+        // Reset facebook.com if it exists
+        if (websiteData["facebook.com"]) {
+          websiteData["facebook.com"].timeSpent = 0;
+        }
+
+        const lastResetDate = new Date().toDateString();
+
+        chrome.storage.local
+          .set({ websiteData, lastResetDate })
+          .then(() => {
+            console.log("Time counter manually reset");
+            sendResponse({ success: true });
+          })
+          .catch((error) => {
+            console.error("Error resetting time:", error);
+            sendResponse({ success: false, error: error.message });
+          });
+      });
 
       return true; // Required for async response
     } catch (error) {
@@ -431,9 +667,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Handle complete settings reset
   if (message.action === "resetAllSettings") {
     try {
-      // Reset all values to defaults
-      timeSpent = 0;
-      timeLimit = 30 * 60; // 30 minutes in seconds
+      // Initialize a clean websiteData object with Facebook as default
+      const websiteData = {
+        "facebook.com": {
+          timeSpent: 0,
+          timeLimit: 30 * 60, // 30 minutes in seconds
+        },
+      };
+
       lastResetDate = new Date().toDateString();
 
       // Clear and reset storage
@@ -441,8 +682,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         .clear()
         .then(() => {
           return chrome.storage.local.set({
-            timeSpent,
-            timeLimit,
+            websiteData,
             lastResetDate,
           });
         })
@@ -466,6 +706,207 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Important: Return true if we want to send a response asynchronously
   return true;
 });
+
+// Helper function to extract domain from URL
+function extractDomain(url) {
+  try {
+    const urlObj = new URL(url);
+    // Get hostname (e.g., www.facebook.com) and extract main domain
+    let domain = urlObj.hostname;
+
+    // Remove www. prefix if present
+    if (domain.startsWith("www.")) {
+      domain = domain.substring(4);
+    }
+
+    return domain;
+  } catch (e) {
+    console.error("Error extracting domain:", e);
+    return null;
+  }
+}
+
+// New function to check if a domain should be tracked
+function shouldTrackDomain(domain) {
+  // Don't track chrome:// or chrome-extension:// URLs
+  if (
+    !domain ||
+    domain.includes("chrome.") ||
+    domain.includes("chrome-extension") ||
+    domain.includes("localhost") ||
+    domain.includes("127.0.0.1")
+  ) {
+    return false;
+  }
+
+  // Check if the domain exists in our websiteData
+  return websiteData.hasOwnProperty(domain);
+}
+
+// Function to get tab domain
+async function getTabDomain(tabId) {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (tab && tab.url) {
+      return extractDomain(tab.url);
+    }
+  } catch (e) {
+    console.error(`Error getting tab ${tabId} info:`, e);
+  }
+  return null;
+}
+
+// Reset data for a new day
+function resetDailyData() {
+  const today = new Date().toDateString();
+
+  if (lastResetDate !== today) {
+    console.log("New day detected, resetting time counters");
+    lastResetDate = today;
+
+    // Reset time for all websites
+    Object.keys(websiteData).forEach((domain) => {
+      websiteData[domain].timeSpent = 0;
+    });
+
+    // Save updated data
+    chrome.storage.local.set({
+      websiteData,
+      lastResetDate,
+    });
+  }
+}
+
+// Add a new website to track
+async function addWebsite(domain, timeLimit = 30) {
+  if (!domain) return false;
+
+  // Normalize domain
+  domain = domain.toLowerCase();
+  if (domain.startsWith("www.")) {
+    domain = domain.substring(4);
+  }
+
+  // Add to websiteData if not exists
+  if (!websiteData[domain]) {
+    websiteData[domain] = {
+      timeSpent: 0, // Time in seconds
+      timeLimit: timeLimit * 60, // Convert minutes to seconds
+    };
+
+    // Save to storage
+    await chrome.storage.local.set({ websiteData });
+    console.log(
+      `Added new website: ${domain} with limit: ${timeLimit} minutes`
+    );
+    return true;
+  }
+  return false;
+}
+
+// Remove a website from tracking
+async function removeWebsite(domain) {
+  if (!domain || !websiteData[domain]) return false;
+
+  // Remove from websiteData
+  delete websiteData[domain];
+
+  // Save updated data
+  await chrome.storage.local.set({ websiteData });
+  console.log(`Removed website: ${domain} from tracking`);
+  return true;
+}
+
+// Update website time limit
+async function updateWebsiteLimit(domain, timeLimit) {
+  if (!domain || !websiteData[domain]) return false;
+
+  // Update time limit (convert minutes to seconds)
+  websiteData[domain].timeLimit = timeLimit * 60;
+
+  // Save updated data
+  await chrome.storage.local.set({ websiteData });
+  console.log(`Updated time limit for ${domain} to ${timeLimit} minutes`);
+  return true;
+}
+
+// Reset time spent for a specific website
+async function resetWebsiteTime(domain) {
+  if (!domain || !websiteData[domain]) return false;
+
+  // Reset time spent
+  websiteData[domain].timeSpent = 0;
+
+  // Save updated data
+  await chrome.storage.local.set({ websiteData });
+  console.log(`Reset time for website: ${domain}`);
+  return true;
+}
+
+// Update time spent for active tabs
+function updateTime() {
+  // Get the current time
+  const now = Date.now();
+  let anyActive = false;
+
+  // Process each active tab
+  activeTabsMap.forEach((tabData, tabId) => {
+    const { domain, isActive, lastUpdateTime } = tabData;
+
+    // Skip inactive tabs or tabs without valid domains
+    if (!isActive || !domain || !shouldTrackDomain(domain)) return;
+
+    // Calculate time difference since last update
+    const timeDiff = (now - lastUpdateTime) / 1000; // in seconds
+
+    // Update time spent for this domain
+    if (websiteData[domain]) {
+      websiteData[domain].timeSpent += timeDiff;
+      anyActive = true;
+    }
+
+    // Update last update time
+    tabData.lastUpdateTime = now;
+  });
+
+  // Save updated data if any tab was active
+  if (anyActive) {
+    chrome.storage.local.set({ websiteData });
+  }
+
+  // Check time limits for all websites
+  checkTimeLimitsAndBlock();
+}
+
+// Change the second instance of checkTimeLimits to a different name
+// Check if any website has reached its time limit
+async function checkTimeLimitsAndBlock() {
+  for (const [domain, data] of Object.entries(websiteData)) {
+    if (data.timeSpent >= data.timeLimit) {
+      // Find all tabs with this domain
+      const tabs = await chrome.tabs.query({});
+
+      for (const tab of tabs) {
+        const tabDomain = extractDomain(tab.url);
+
+        // If this tab matches the domain that reached limit
+        if (tabDomain === domain) {
+          // Send time limit reached message to content script
+          try {
+            await chrome.tabs.sendMessage(tab.id, {
+              action: "timeLimitReached",
+              domain: domain,
+              timeSpent: data.timeSpent,
+              timeLimit: data.timeLimit,
+            });
+          } catch (e) {
+            console.error(`Error sending limit message to tab ${tab.id}:`, e);
+          }
+        }
+      }
+    }
+  }
+}
 
 // Handle errors safely
 const handleError = (error) => {

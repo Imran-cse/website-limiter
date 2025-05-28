@@ -342,6 +342,8 @@ function setupMessageListener() {
 function handleBackgroundMessage(message, sender, sendResponse) {
   try {
     if (message.action === "timeLimitReached") {
+      const domain = message.domain || new URL(window.location.href).hostname;
+
       document.body.innerHTML = `
         <div style="
           position: fixed;
@@ -358,13 +360,13 @@ function handleBackgroundMessage(message, sender, sendResponse) {
           font-family: Arial, sans-serif;
         ">
           <h1>Time Limit Reached</h1>
-          <p>You've reached your daily Facebook limit.</p>
+          <p>You've reached your daily time limit for ${domain}.</p>
           <p>Come back tomorrow or adjust your limit in the extension settings.</p>
         </div>
       `;
       // Acknowledge receipt of message
       if (sendResponse) {
-        sendResponse({ status: "blocked" });
+        sendResponse({ status: "blocked", domain: domain });
       }
     }
   } catch (error) {
