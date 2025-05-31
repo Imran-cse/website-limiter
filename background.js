@@ -778,6 +778,33 @@ function resetDailyData() {
 }
 
 // Add a new website to track
+// async function addWebsite(domain, timeLimit = 30) {
+//   if (!domain) return false;
+
+//   // Normalize domain
+//   domain = domain.toLowerCase();
+//   if (domain.startsWith("www.")) {
+//     domain = domain.substring(4);
+//   }
+
+//   // Add to websiteData if not exists
+//   if (!websiteData[domain]) {
+//     websiteData[domain] = {
+//       timeSpent: 0, // Time in seconds
+//       timeLimit: timeLimit * 60, // Convert minutes to seconds
+//     };
+
+//     // Save to storage
+//     await chrome.storage.local.set({ websiteData });
+//     console.log(
+//       `Added new website: ${domain} with limit: ${timeLimit} minutes`
+//     );
+//     return true;
+//   }
+//   return false;
+// }
+
+// Add a new website to track
 async function addWebsite(domain, timeLimit = 30) {
   if (!domain) return false;
 
@@ -787,21 +814,33 @@ async function addWebsite(domain, timeLimit = 30) {
     domain = domain.substring(4);
   }
 
-  // Add to websiteData if not exists
-  if (!websiteData[domain]) {
-    websiteData[domain] = {
-      timeSpent: 0, // Time in seconds
-      timeLimit: timeLimit * 60, // Convert minutes to seconds
-    };
+  try {
+    // Get the most recent website data from storage
+    const data = await chrome.storage.local.get(["websiteData"]);
+    const currentWebsiteData = data.websiteData || {};
 
-    // Save to storage
-    await chrome.storage.local.set({ websiteData });
-    console.log(
-      `Added new website: ${domain} with limit: ${timeLimit} minutes`
-    );
-    return true;
+    // Add to websiteData if not exists
+    if (!currentWebsiteData[domain]) {
+      currentWebsiteData[domain] = {
+        timeSpent: 0, // Time in seconds
+        timeLimit: timeLimit * 60, // Convert minutes to seconds
+      };
+
+      // Update our in-memory copy
+      websiteData = currentWebsiteData;
+
+      // Save to storage
+      await chrome.storage.local.set({ websiteData: currentWebsiteData });
+      console.log(
+        `Added new website: ${domain} with limit: ${timeLimit} minutes`
+      );
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error("Error adding website:", error);
+    return false;
   }
-  return false;
 }
 
 // Remove a website from tracking
