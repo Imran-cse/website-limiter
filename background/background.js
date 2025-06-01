@@ -416,29 +416,32 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       );
 
       // If this is from a facebook tab, make sure it's in our tracking map
-      if (
-        sender.tab &&
-        sender.tab.url &&
-        sender.tab.url.includes("facebook.com")
-      ) {
+      if (sender.tab && sender.tab.url) {
+        const domain = extractDomain(sender.tab.url);
         // Record it in our active tabs map if not already there
         if (!activeTabsMap.has(sender.tab.id)) {
           console.log(
             `Adding previously unknown tab ${sender.tab.id} to tracking`
           );
-          activeTabsMap.set(sender.tab.id, false); // Default to inactive until we get a status
+          activeTabsMap.set(sender.tab.id, {
+            domain: domain,
+            isActive: false, // Default to inactive until we get a visibility change
+            lastUpdateTime: Date.now(),
+          });
         }
       }
 
       // Update the ping response to get actual values from websiteData if possible
       let currentTimeSpent = timeSpent;
       let currentTimeLimit = timeLimit;
+      let isTracked = false;
 
       if (sender.tab && sender.tab.url) {
         const domain = extractDomain(sender.tab.url);
         if (websiteData[domain]) {
           currentTimeSpent = websiteData[domain].timeSpent;
           currentTimeLimit = websiteData[domain].timeLimit;
+          isTracked = true;
         }
       }
 
@@ -447,8 +450,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         status: "ok",
         timestamp: Date.now(),
         tabsTracked: activeTabsMap.size,
-        timeSpent: timeSpent,
-        timeLimit: timeLimit,
+        timeSpent: currentTimeSpent,
+        timeLimit: currentTimeLimit,
+        isTracked: isTracked,
+        websiteData: websiteData,
       });
     } catch (error) {
       console.error("Error handling ping:", error);
@@ -834,12 +839,83 @@ async function addWebsite(domain, timeLimit = 30) {
       console.log(
         `Added new website: ${domain} with limit: ${timeLimit} minutes`
       );
+
+      // Notify any existing tabs with this domain that they are now being tracked
+      try {
+        const tabs = await chrome.tabs.query({});
+        for (const tab of tabs) {
+          if (!tab.url) continue;
+
+          const tabDomain = extractDomain(tab.url);
+          if (tabDomain === domain) {
+            console.log(
+              `Notifying tab ${tab.id} that ${domain} is now tracked`
+            );
+            chrome.tabs
+              .sendMessage(tab.id, {
+                action: "domainNowTracked",
+                domain: domain,
+              })
+              .catch((err) =>
+                console.log(`Could not notify tab ${tab.id}: ${err.message}`)
+              );
+          }
+        }
+      } catch (err) {
+        console.error("Error notifying tabs about new tracked domain:", err);
+      }
       return true;
     }
+    await notifyWebsiteTracking(domain);
     return false;
   } catch (error) {
     console.error("Error adding website:", error);
     return false;
+  }
+}
+
+// Add this to your background.js after the addWebsite function
+async function notifyWebsiteTracking(domain) {
+  try {
+    // Query all tabs that match this domain
+    const tabs = await chrome.tabs.query({});
+    let matchedTabs = 0;
+
+    for (const tab of tabs) {
+      if (!tab.url) continue;
+
+      const tabDomain = extractDomain(tab.url);
+      if (tabDomain === domain) {
+        matchedTabs++;
+        console.log(`Notifying tab ${tab.id} that ${domain} is now tracked`);
+
+        try {
+          // First check if the tab is already in our tracking map
+          if (!activeTabsMap.has(tab.id)) {
+            // Add it to tracking with default inactive state
+            activeTabsMap.set(tab.id, {
+              domain: domain,
+              isActive: false, // Will be updated when tab responds
+              lastUpdateTime: Date.now(),
+            });
+          }
+
+          // Send a message to start tracking immediately
+          await chrome.tabs.sendMessage(tab.id, {
+            action: "startTracking",
+            domain: domain,
+            timeSpent: websiteData[domain].timeSpent,
+            timeLimit: websiteData[domain].timeLimit,
+          });
+        } catch (sendError) {
+          console.warn(`Could not notify tab ${tab.id}:`, sendError.message);
+        }
+      }
+    }
+
+    console.log(`Notified ${matchedTabs} tabs about tracking for ${domain}`);
+  } catch (err) {
+    console.error("Error notifying tabs about tracked domain:", err);
   }
 }
 

@@ -6,7 +6,7 @@ const PING_FREQUENCY = 5000; // Check active status every 5 seconds
 
 // Function to determine if window is actually visible/focused
 function checkWindowActive() {
-  return !document.hidden && document.hasFocus();
+  return !document.hidden;
 }
 
 // Initial setup - determine the actual state right away
@@ -48,10 +48,23 @@ function attemptReconnection() {
     `Attempting reconnection (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`
   );
 
+  // Store reconnection start time in sessionStorage to track across page refreshes
+  try {
+    sessionStorage.setItem(
+      "wtl_reconnect_attempts",
+      reconnectAttempts.toString()
+    );
+    sessionStorage.setItem("wtl_last_reconnect_time", Date.now().toString());
+  } catch (e) {
+    // Ignore storage errors
+  }
+
   if (reconnectAttempts <= MAX_RECONNECT_ATTEMPTS) {
     // Use exponential backoff for retry timing
     const delay = Math.min(
-      RECONNECT_DELAY_MS * Math.pow(1.5, reconnectAttempts - 1),
+      RECONNECT_DELAY_MS *
+        Math.pow(1.5, reconnectAttempts - 1) *
+        (0.9 + Math.random() * 0.2),
       30000
     );
 
@@ -344,29 +357,61 @@ function handleBackgroundMessage(message, sender, sendResponse) {
     if (message.action === "timeLimitReached") {
       const domain = message.domain || new URL(window.location.href).hostname;
 
-      document.body.innerHTML = `
-        <div style="
-          position: fixed;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          background-color: white;
-          display: flex;
-          flex-direction: column;
-          justify-content: center;
-          align-items: center;
-          z-index: 9999;
-          font-family: Arial, sans-serif;
-        ">
-          <h1>Time Limit Reached</h1>
-          <p>You've reached your daily time limit for ${domain}.</p>
-          <p>Come back tomorrow or adjust your limit in the extension settings.</p>
-        </div>
-      `;
+      // Create URL to the blocked.html page with the domain as a parameter
+      const blockedUrl =
+        chrome.runtime.getURL("blocked.html") +
+        `?domain=${encodeURIComponent(domain)}`;
+
+      // Redirect to the blocked page instead of injecting HTML
+      console.log(
+        `Time limit reached for ${domain}, redirecting to blocked page`
+      );
+      window.location.href = blockedUrl;
+
       // Acknowledge receipt of message
       if (sendResponse) {
         sendResponse({ status: "blocked", domain: domain });
+      }
+    } else if (message.action === "domainNowTracked") {
+      console.log(`This domain (${message.domain}) is now being tracked`);
+
+      // Immediately send current visibility state to start tracking
+      isPageActive = checkWindowActive();
+      updateBackgroundScript(isPageActive);
+
+      // Acknowledge receipt
+      if (sendResponse) {
+        sendResponse({ status: "acknowledged", domain: message.domain });
+      }
+    } else if (message.action === "startTracking") {
+      console.log(`Starting active tracking for ${message.domain}`);
+
+      // Force a status update to background script
+      isPageActive = checkWindowActive();
+
+      // Send update with additional flag to ensure immediate tracking
+      chrome.runtime.sendMessage(
+        {
+          action: "visibilityChange",
+          isActive: isPageActive,
+          tabUrl: window.location.href,
+          timestamp: Date.now(),
+          focused: document.hasFocus(),
+          hidden: document.hidden,
+          forceTrack: true, // Special flag to force tracking
+        },
+        (response) => {
+          console.log("Force tracking response:", response);
+        }
+      );
+
+      // Acknowledge receipt
+      if (sendResponse) {
+        sendResponse({
+          status: "tracking_started",
+          domain: message.domain,
+          isActive: isPageActive,
+        });
       }
     }
   } catch (error) {
