@@ -281,7 +281,7 @@ const checkTimeLimits = async (domains = []) => {
               // Fallback method: redirect if messaging fails
               try {
                 const blockedUrl = new URL(
-                  chrome.runtime.getURL("blocked.html")
+                  chrome.runtime.getURL("ui/blocked/blocked.html")
                 );
                 blockedUrl.searchParams.set("domain", domain);
 

@@ -359,7 +359,7 @@ function handleBackgroundMessage(message, sender, sendResponse) {
 
       // Create URL to the blocked.html page with the domain as a parameter
       const blockedUrl =
-        chrome.runtime.getURL("blocked.html") +
+        chrome.runtime.getURL("ui/blocked/blocked.html") +
         `?domain=${encodeURIComponent(domain)}`;
 
       // Redirect to the blocked page instead of injecting HTML
