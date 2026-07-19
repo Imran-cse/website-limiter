@@ -53,12 +53,19 @@
     <button id="addWebsiteButton" class="primary-button">Add Website</button>
   </div>
 
-  <!-- Debug Section -->
-  <div class="debug-section">
+  <!-- Refresh (routine) -->
+  <div class="refresh-row">
     <button id="refreshButton" class="neutral-button">Refresh Stats</button>
-    <button id="resetSettingsButton" class="danger-button">Reset All Settings</button>
-    <div id="debugInfo"></div>
   </div>
+
+  <!-- Advanced / Debug (collapsed by default) -->
+  <details class="debug-section">
+    <summary>Advanced</summary>
+    <div id="debugInfo"></div>
+    <div class="danger-zone">
+      <button id="resetSettingsButton" class="danger-button">Reset All Settings</button>
+    </div>
+  </details>
   <script src="popup.js"></script>
 </body>
 

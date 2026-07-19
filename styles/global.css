@@ -2,7 +2,8 @@
 body {
   width: 350px;
   padding: 15px;
-  font-family: Arial, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif;
   color: #333;
   max-height: 600px;
   overflow-y: auto;
@@ -35,15 +36,40 @@ h3 {
 
 .website-selector {
   display: flex;
-  gap: 5px;
+  gap: 8px;
+  align-items: stretch; /* select + button share the same height */
   margin-bottom: 15px;
 }
 
 .website-selector select {
   flex: 1;
-  padding: 8px;
-  border-radius: 4px;
+  min-width: 0; /* allow shrink so long domains truncate instead of overflowing */
+  padding: 8px 32px 8px 12px;
+  border-radius: 6px;
   border: 1px solid #ccc;
+  background-color: #fff;
+  font-size: 14px;
+  color: #333;
+  cursor: pointer;
+  text-overflow: ellipsis;
+  /* custom chevron — hides the inconsistent native OS arrow */
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.website-selector select:hover {
+  border-color: #4285f4;
+}
+
+.website-selector select:focus-visible {
+  outline: none;
+  border-color: #4285f4;
+  box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.2);
 }
 
 .time-display {
@@ -120,22 +146,34 @@ input {
 
 button {
   width: 100%;
-  padding: 10px;
-  background-color: #4267b2;
+  padding: 9px;
+  background-color: #4285f4;
   color: white;
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
   font-weight: bold;
-  margin-top: 10px;
+  margin-top: 8px;
 }
 
 button:hover {
-  background-color: #365899;
+  background-color: #3367d6;
 }
 
 button:active {
-  background-color: #29487d;
+  background-color: #2a56c6;
+}
+
+input:focus-visible,
+select:focus-visible {
+  outline: none;
+  border-color: #4285f4;
+  box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.2);
+}
+
+button:focus-visible {
+  outline: 2px solid #1a3d8f;
+  outline-offset: 2px;
 }
 
 .button-row {
@@ -144,30 +182,20 @@ button:active {
   margin-top: 10px;
 }
 
-.secondary-button {
-  background-color: #f0f2f5;
-  color: #4267b2;
-  border: 1px solid #4267b2;
-}
-
-.secondary-button:hover {
-  background-color: #e4e6eb;
-}
-
 /* New styles for website selector and forms */
 .action-button {
-  padding: 8px 10px;
-  background-color: #34a853; /* Google green */
+  padding: 8px 12px;
+  background-color: #4285f4; /* match primary accent */
   color: white;
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 13px;
   white-space: nowrap;
 }
 
 .action-button:hover {
-  background-color: #2d9249;
+  background-color: #3367d6;
 }
 
 .form-group {
@@ -250,12 +278,36 @@ button:active {
   margin-bottom: 15px;
 }
 
-.debug-section {
+.refresh-row {
   margin-top: 15px;
+  text-align: center;
+}
+
+.debug-section {
+  margin-top: 12px;
   border-top: 1px solid #ddd;
-  padding-top: 10px;
+  padding-top: 8px;
   font-size: 11px;
   color: #666;
+}
+
+.debug-section > summary {
+  cursor: pointer;
+  user-select: none;
+  color: #888;
+  font-size: 11px;
+  padding: 2px 0;
+}
+
+.debug-section > summary:hover {
+  color: #555;
+}
+
+/* Keep destructive action out of the routine flow */
+.danger-zone {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px dashed #e0b4b4;
 }
 
 #debugInfo {
@@ -269,4 +321,15 @@ button:active {
 #currentWebsite {
   word-break: break-all;
   max-width: 100%;
+}
+
+#emptyState {
+  background-color: #eef3fd;
+  border: 1px dashed #a9c3f5;
+  border-radius: 6px;
+  padding: 14px 10px;
+  text-align: center;
+  color: #3367d6;
+  font-size: 13px;
+  margin-bottom: 15px;
 }

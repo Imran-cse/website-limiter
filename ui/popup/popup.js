@@ -305,9 +305,31 @@ function sendMessageWithRetry(message, callback, retryCount = 0) {
   }
 }
 
+// Show/hide the empty-state hint and the stats panel
+function toggleEmptyState(isEmpty) {
+  const stats = document.getElementById("statsContainer");
+  let hint = document.getElementById("emptyState");
+
+  if (isEmpty) {
+    if (!hint) {
+      hint = document.createElement("p");
+      hint.id = "emptyState";
+      hint.textContent = "No sites tracked yet — add one below to start.";
+      document
+        .querySelector(".website-selector")
+        .insertAdjacentElement("afterend", hint);
+    }
+    if (stats) stats.style.display = "none";
+  } else {
+    if (hint) hint.remove();
+    if (stats) stats.style.display = "";
+  }
+}
+
 // Helper function to populate the website selector dropdown
 function populateWebsiteSelector() {
   const selector = document.getElementById("websiteSelect");
+  const previous = selector.value; // preserve selection across refreshes
 
   // Clear existing options except the default one
   while (selector.options.length > 1) {
@@ -316,23 +338,25 @@ function populateWebsiteSelector() {
 
   chrome.storage.local.get(["websiteData"], (data) => {
     const websiteData = data.websiteData || {};
+    const domains = Object.keys(websiteData).sort();
 
     // Add each website to the dropdown
-    Object.keys(websiteData)
-      .sort()
-      .forEach((domain) => {
-        const option = document.createElement("option");
-        option.value = domain;
-        option.textContent = domain;
-        selector.appendChild(option);
-      });
+    domains.forEach((domain) => {
+      const option = document.createElement("option");
+      option.value = domain;
+      option.textContent = domain;
+      selector.appendChild(option);
+    });
 
-    // If we have websites but none selected, select the first one
-    if (selector.options.length > 1 && !selector.value) {
+    toggleEmptyState(domains.length === 0);
+
+    // Keep the previous selection if it still exists; otherwise auto-select the
+    // first domain so a single tracked site shows without an extra click.
+    if (domains.includes(previous)) {
+      selector.value = previous;
+    } else if (domains.length > 0) {
       selector.selectedIndex = 1;
-      // Trigger a change event to update the display
-      const event = new Event("change");
-      selector.dispatchEvent(event);
+      selector.dispatchEvent(new Event("change"));
     }
   });
 }
