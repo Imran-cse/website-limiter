@@ -2,70 +2,142 @@
 <html>
 
 <head>
+  <meta charset="utf-8">
   <title>FocusGuard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/styles/global.css">
 </head>
 
 <body>
-  <h1>FocusGuard</h1>
+  <!-- ============ TODAY SCREEN ============ -->
+  <section id="todayScreen" class="screen">
+    <!-- header -->
+    <header class="pop-header">
+      <div class="brand">
+        <span class="brand-mark"><span class="ring-glyph"></span></span>
+        <span class="brand-name">FocusGuard</span>
+      </div>
+      <button id="gotoSettings" class="icon-btn" title="Settings" aria-label="Settings">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </header>
 
-  <!-- Website Selector -->
-  <div class="website-selector">
-    <select id="websiteSelect">
-      <option value="">-- Select Website --</option>
-      <!-- Websites will be populated here -->
-    </select>
-    <button id="addCurrentButton" class="action-button">Add Current Site</button>
-  </div>
-
-  <!-- Current Website Stats -->
-  <div class="time-display" id="statsContainer">
-    <h2 id="currentWebsite">Select a website</h2>
-    <p>Time Spent Today: <span id="timeSpent">0:00</span></p>
-    <div class="progress-container">
-      <div id="timeProgress" class="progress-bar"></div>
+    <!-- today summary -->
+    <div class="today-summary">
+      <div class="ring-wrap">
+        <svg width="78" height="78" viewBox="0 0 78 78" class="ring-svg">
+          <circle cx="39" cy="39" r="33" fill="none" class="ring-track" stroke-width="9"/>
+          <circle id="summaryRing" cx="39" cy="39" r="33" fill="none" class="ring-fill" stroke-width="9" stroke-linecap="round" stroke-dasharray="207" stroke-dashoffset="207"/>
+        </svg>
+        <div class="ring-label"><span id="summaryPct">0%</span></div>
+      </div>
+      <div class="today-meta">
+        <div class="today-caption">Today's screen time</div>
+        <div id="summaryTotal" class="today-total">0m</div>
+        <div class="today-sub">across <b id="summaryCount">0 sites</b> · resets at midnight</div>
+      </div>
     </div>
-    <p class="time-remaining" id="timeRemaining"></p>
-  </div>
 
-  <!-- Website Settings -->
-  <div class="settings">
-    <label for="timeLimit">Daily Time Limit (minutes):</label>
-    <input type="number" id="timeLimit" min="1" max="480" value="30">
-    <button id="saveButton">Save Limit</button>
-    <div class="website-actions">
-      <button id="resetTimeButton" class="secondary-button">Reset Time</button>
-      <button id="removeWebsiteButton" class="warning-button">Remove Website</button>
+    <!-- add current site -->
+    <div class="track-cta">
+      <button id="addCurrentButton" class="btn-primary btn-block">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        Track this site
+      </button>
     </div>
-  </div>
 
-  <!-- Add New Website Form -->
-  <div class="add-website">
-    <h3>Add New Website</h3>
-    <div class="form-group">
-      <label for="newWebsiteDomain">Domain (e.g., facebook.com):</label>
-      <input type="text" id="newWebsiteDomain" placeholder="example.com">
-    </div>
-    <div class="form-group">
-      <label for="newWebsiteLimit">Time Limit (minutes):</label>
-      <input type="number" id="newWebsiteLimit" min="1" max="480" value="30">
-    </div>
-    <button id="addWebsiteButton" class="primary-button">Add Website</button>
-  </div>
+    <!-- site list -->
+    <div id="siteList" class="site-list"></div>
 
-  <!-- Refresh (routine) -->
-  <div class="refresh-row">
-    <button id="refreshButton" class="neutral-button">Refresh Stats</button>
-  </div>
-
-  <!-- Advanced / Debug (collapsed by default) -->
-  <details class="debug-section">
-    <summary>Advanced</summary>
-    <div id="debugInfo"></div>
-    <div class="danger-zone">
-      <button id="resetSettingsButton" class="danger-button">Reset All Settings</button>
+    <!-- empty state -->
+    <div id="emptyState" class="empty-state" hidden>
+      <div class="empty-icon">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      </div>
+      <div class="empty-title">No sites tracked yet</div>
+      <div class="empty-sub">Add one to start guarding your focus.</div>
     </div>
-  </details>
+
+    <!-- footer -->
+    <footer class="pop-footer">
+      <button id="addAnother" class="link-btn accent">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        Add another site
+      </button>
+      <button id="footerSettings" class="link-btn muted">Settings</button>
+    </footer>
+  </section>
+
+  <!-- ============ ADD / SETTINGS SCREEN ============ -->
+  <section id="addScreen" class="screen" hidden>
+    <header class="pop-header">
+      <div class="brand">
+        <button id="backToday" class="icon-btn bordered" title="Back" aria-label="Back">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+        <span class="brand-name">Add a website</span>
+      </div>
+    </header>
+
+    <div class="add-body">
+      <!-- current site quick add -->
+      <div id="currentTabCard" class="current-card" hidden>
+        <div class="current-avatar" id="currentAvatar">?</div>
+        <div class="current-meta">
+          <div class="current-caption">Current tab</div>
+          <div class="current-domain" id="currentDomain">—</div>
+        </div>
+        <button id="quickTrack" class="btn-primary btn-sm">Track</button>
+      </div>
+
+      <div class="divider"><span>OR ADD MANUALLY</span></div>
+
+      <!-- domain -->
+      <div class="field">
+        <label class="field-label" for="newWebsiteDomain">Website domain</label>
+        <div class="input-wrap">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="input-icon"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20"/></svg>
+          <input id="newWebsiteDomain" placeholder="facebook.com" class="input mono" autocomplete="off" spellcheck="false" />
+        </div>
+      </div>
+
+      <!-- time limit -->
+      <div class="field">
+        <label class="field-label" for="newWebsiteLimit">Daily limit</label>
+        <div class="input-wrap tight">
+          <input id="newWebsiteLimit" type="number" min="1" max="480" value="30" class="input mono strong" />
+          <span class="input-suffix">min</span>
+        </div>
+        <div class="chips" id="limitChips">
+          <span class="chip" data-min="15">15m</span>
+          <span class="chip active" data-min="30">30m</span>
+          <span class="chip" data-min="60">1h</span>
+          <span class="chip" data-min="120">2h</span>
+        </div>
+      </div>
+
+      <button id="addWebsiteButton" class="btn-primary btn-block">Add website</button>
+
+      <!-- advanced -->
+      <div class="advanced">
+        <button id="advToggle" class="adv-head" aria-expanded="false">
+          <span>Advanced</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" class="adv-chevron"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div id="advBody" class="adv-body" hidden>
+          <div class="adv-row"><span>Last reset</span><span id="advLastReset" class="mono">—</span></div>
+          <div class="adv-row"><span>Active tabs</span><span id="advActiveTabs" class="mono">—</span></div>
+          <div class="adv-row"><span>Tracked sites</span><span id="advSiteCount" class="mono">0</span></div>
+          <button id="resetSettingsButton" class="btn-danger-outline btn-block">Reset all settings</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div id="toastHost" class="toast-host"></div>
+
   <script src="popup.js"></script>
 </body>
 
