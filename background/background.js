@@ -1,4 +1,10 @@
-// Website Time Limiter - Background Script
+// FocusGuard - Background Script
+
+// Debug flag — gate noisy per-second logs
+const DEBUG = false;
+const dlog = (...args) => {
+  if (DEBUG) console.log(...args);
+};
 
 // Store time data for multiple websites
 let websiteData = {}; // Format: { domain: { timeSpent: seconds, timeLimit: seconds } }
@@ -6,9 +12,17 @@ let lastResetDate = new Date().toDateString();
 let activeTabsMap = new Map(); // Track active tabs and their status: Map<tabId, {domain, isActive}>
 let timerInterval = null;
 
-// Legacy variables for backward compatibility
-let timeSpent = 0;
-let timeLimit = 30 * 60; // 30 minutes in seconds
+// Alarm names
+const TICK_ALARM = "focusTick";
+const DAILY_RESET_ALARM = "dailyReset";
+
+// Never credit more than this many seconds in a single flush — guards against
+// a long service-worker sleep over-crediting time to tabs we cannot confirm
+// stayed active the whole time.
+const MAX_FLUSH_CREDIT = 90;
+
+// Prevent overlapping flushes
+let flushInProgress = false;
 
 // Keep track of last initialization time
 let lastInitializeTime = 0;
@@ -23,7 +37,7 @@ const initialize = async () => {
   }
 
   lastInitializeTime = now;
-  console.log("Initializing Website Time Limiter extension");
+  console.log("Initializing FocusGuard extension");
 
   try {
     const data = await chrome.storage.local.get([
@@ -56,49 +70,13 @@ const initialize = async () => {
       lastResetDate = data.lastResetDate;
     }
 
+    // Set up midnight reset alarm
+    setupMidnightReset();
+
     // Check if we need to reset daily counts
-    resetDailyData();
+    await resetDailyData();
 
     console.log("Loaded storage data:", data);
-
-    if (data.timeSpent !== undefined) {
-      timeSpent = parseInt(data.timeSpent);
-      console.log("Loaded time spent:", timeSpent, "seconds");
-    } else {
-      console.log("No saved time spent, using default:", timeSpent);
-    }
-
-    if (data.timeLimit !== undefined && data.timeLimit) {
-      timeLimit = parseInt(data.timeLimit);
-      console.log("Loaded time limit:", timeLimit, "seconds");
-    } else {
-      console.log("No saved time limit, using default:", timeLimit);
-      // Explicitly save the default time limit if none was found
-      await chrome.storage.local.set({ timeLimit });
-    }
-
-    // Verify the timeLimit is a valid number
-    if (isNaN(timeLimit) || timeLimit <= 0) {
-      timeLimit = 30 * 60; // Reset to default if invalid
-      console.log("Invalid time limit detected, reset to default:", timeLimit);
-      await chrome.storage.local.set({ timeLimit });
-    }
-
-    if (data.lastResetDate) {
-      lastResetDate = data.lastResetDate;
-      console.log("Last reset date:", lastResetDate);
-    } else {
-      console.log("No reset date found, using today:", lastResetDate);
-    }
-
-    // Reset time if it's a new day
-    const today = new Date().toDateString();
-    if (lastResetDate !== today) {
-      console.log("New day detected, resetting time");
-      timeSpent = 0;
-      lastResetDate = today;
-      await chrome.storage.local.set({ timeSpent, lastResetDate });
-    }
   } catch (error) {
     console.error("Error in initialization:", error);
   }
@@ -107,14 +85,87 @@ const initialize = async () => {
   startTimer();
 };
 
-// Start the timer that increments time spent when tracked websites are active
+// Remove closed tabs from the tracking map
+const pruneClosedTabs = async () => {
+  if (activeTabsMap.size === 0) return;
+  const tabs = await chrome.tabs.query({});
+  const existing = new Set(tabs.map((tab) => tab.id));
+  for (const tabId of activeTabsMap.keys()) {
+    if (!existing.has(tabId)) activeTabsMap.delete(tabId);
+  }
+};
+
+// Accumulate active time using wall-clock diffs rather than counting timer
+// ticks. This stays accurate even when the MV3 service worker is killed and
+// later revived by an event or alarm, because elapsed time is derived from
+// `lastFlushTime` in storage — not from how many intervals actually fired.
+const flushActiveTime = async () => {
+  if (flushInProgress) return;
+  flushInProgress = true;
+  try {
+    const now = Date.now();
+
+    // Determine currently active tracked domains
+    await pruneClosedTabs();
+    const activeDomains = new Set();
+    for (const tabData of activeTabsMap.values()) {
+      if (
+        tabData?.isActive &&
+        tabData.domain &&
+        shouldTrackDomain(tabData.domain)
+      ) {
+        activeDomains.add(tabData.domain);
+      }
+    }
+
+    // Single source of truth: always read-modify-write storage
+    const stored = await chrome.storage.local.get([
+      "websiteData",
+      "lastFlushTime",
+    ]);
+    websiteData = stored.websiteData || {};
+    const lastFlush = stored.lastFlushTime || now;
+
+    // Seconds since last flush, clamped so a long worker-death gap can't
+    // over-credit time to tabs we cannot confirm stayed active.
+    const elapsed = Math.min(
+      Math.max((now - lastFlush) / 1000, 0),
+      MAX_FLUSH_CREDIT,
+    );
+
+    if (activeDomains.size > 0 && elapsed > 0) {
+      dlog(
+        `Crediting ${elapsed.toFixed(1)}s to ${activeDomains.size} domain(s)`,
+      );
+      for (const domain of activeDomains) {
+        if (!websiteData[domain]) {
+          websiteData[domain] = {
+            timeSpent: 0,
+            timeLimit: 1800, // 30 minutes default
+            warned: false,
+          };
+        }
+        websiteData[domain].timeSpent += elapsed;
+      }
+    }
+
+    await chrome.storage.local.set({ websiteData, lastFlushTime: now });
+
+    if (activeDomains.size > 0) {
+      await checkTimeLimits(Array.from(activeDomains));
+    }
+  } catch (error) {
+    console.error("Error in flushActiveTime:", error);
+  } finally {
+    flushInProgress = false;
+  }
+};
+
+// Start tracking. Two complementary drivers:
+//  - setInterval: fast, sub-second flushes while the worker is alive.
+//  - alarm heartbeat: survives worker sleep so limits still get enforced.
 const startTimer = () => {
   if (timerInterval !== null) {
-    // Clear any existing interval just to be safe
-    if (websiteData["facebook.com"]) {
-      timeSpent = websiteData["facebook.com"].timeSpent;
-      timeLimit = websiteData["facebook.com"].timeLimit;
-    }
     try {
       clearInterval(timerInterval);
       timerInterval = null;
@@ -124,96 +175,17 @@ const startTimer = () => {
     }
   }
 
-  console.log("Starting new timer interval");
+  console.log("Starting time tracking");
 
-  // Create new interval for tracking time
-  timerInterval = setInterval(async () => {
-    try {
-      // Log timer tick for debugging
-      console.log("Timer tick: checking for active tracked websites...");
+  // Reset the flush baseline so the first interval doesn't credit a stale gap
+  chrome.storage.local.set({ lastFlushTime: Date.now() });
 
-      // Track active domains
-      const activeDomains = new Map(); // Map of domain -> tab count
-      const activeTabIds = [];
-
-      // Check if we have any active tabs to track
-      const tabMapSize = activeTabsMap.size;
-      console.log(`Active tabs map contains ${tabMapSize} tabs`);
-
-      if (tabMapSize > 0) {
-        // Verify tabs actually exist (they might have been closed without proper events)
-        const tabs = await chrome.tabs.query({});
-        const existingTabIds = tabs.map((tab) => tab.id);
-
-        // Clean up our map by removing non-existent tabs
-        for (const tabId of activeTabsMap.keys()) {
-          if (!existingTabIds.includes(tabId)) {
-            activeTabsMap.delete(tabId);
-            continue;
-          }
-
-          // Get tab data
-          const tabData = activeTabsMap.get(tabId);
-
-          // Skip inactive tabs or tabs without valid domains
-          if (!tabData?.isActive || !tabData?.domain) {
-            continue;
-          }
-
-          // Only count domains we're tracking
-          if (shouldTrackDomain(tabData.domain)) {
-            activeDomains.set(
-              tabData.domain,
-              (activeDomains.get(tabData.domain) || 0) + 1
-            );
-            activeTabIds.push(tabId);
-          }
-        }
-      }
-
-      // Process each active domain
-      if (activeDomains.size > 0) {
-        console.log(
-          `Incrementing time for ${activeDomains.size} active domains across ${activeTabIds.length} tab(s)`
-        );
-
-        // Load current website data
-        const data = await chrome.storage.local.get(["websiteData"]);
-        let websiteData = data.websiteData || {};
-
-        // Increment time for each active domain
-        for (const [domain, count] of activeDomains.entries()) {
-          if (!websiteData[domain]) {
-            // Initialize if not exists
-            websiteData[domain] = {
-              timeSpent: 0,
-              timeLimit: 1800, // 30 minutes default
-            };
-          }
-
-          // Increment by 1 second
-          websiteData[domain].timeSpent += 1;
-
-          // Log every minute for debugging
-          if (websiteData[domain].timeSpent % 60 === 0) {
-            console.log(
-              `Time spent on ${domain} updated: ${Math.floor(
-                websiteData[domain].timeSpent / 60
-              )} minutes`
-            );
-          }
-        }
-
-        // Save the updated website data
-        await chrome.storage.local.set({ websiteData });
-
-        // Handle limit warnings and blocking
-        await checkTimeLimits(Array.from(activeDomains.keys()));
-      }
-    } catch (error) {
-      console.error("Error in timer:", error);
-    }
+  timerInterval = setInterval(() => {
+    flushActiveTime();
   }, 1000);
+
+  // Heartbeat alarm (min period 1 min in production) catches up after sleep
+  chrome.alarms?.create(TICK_ALARM, { periodInMinutes: 1 });
 };
 
 // Check if time limits are reached or approaching for specified domains
@@ -239,14 +211,16 @@ const checkTimeLimits = async (domains = []) => {
       // Skip if no time limit set
       if (!timeLimit) continue;
 
-      // Warn when approaching time limit (90%)
-      if (timeSpent === Math.floor(timeLimit * 0.9)) {
+      // Warn once when approaching time limit (90%)
+      if (timeSpent >= Math.floor(timeLimit * 0.9) && !siteData.warned) {
+        siteData.warned = true;
+        await chrome.storage.local.set({ websiteData });
         await chrome.notifications.create({
           type: "basic",
           iconUrl: "icon48.png",
-          title: "Website Time Limiter",
+          title: "FocusGuard",
           message: `Approaching time limit for ${domain}! ${Math.floor(
-            (timeLimit - timeSpent) / 60
+            (timeLimit - timeSpent) / 60,
           )} minutes left.`,
         });
       }
@@ -262,7 +236,7 @@ const checkTimeLimits = async (domains = []) => {
           });
 
           console.log(
-            `Time limit reached for ${domain}. Blocking ${domainTabs.length} tabs.`
+            `Time limit reached for ${domain}. Blocking ${domainTabs.length} tabs.`,
           );
 
           // Notify all domain tabs that limit is reached
@@ -275,13 +249,13 @@ const checkTimeLimits = async (domains = []) => {
             } catch (tabError) {
               console.error(
                 `Error sending message to tab ${tab.id}:`,
-                tabError
+                tabError,
               );
 
               // Fallback method: redirect if messaging fails
               try {
                 const blockedUrl = new URL(
-                  chrome.runtime.getURL("ui/blocked/blocked.html")
+                  chrome.runtime.getURL("ui/blocked/blocked.html"),
                 );
                 blockedUrl.searchParams.set("domain", domain);
 
@@ -291,7 +265,7 @@ const checkTimeLimits = async (domains = []) => {
               } catch (redirectError) {
                 console.error(
                   `Error redirecting tab ${tab.id}:`,
-                  redirectError
+                  redirectError,
                 );
               }
             }
@@ -330,6 +304,8 @@ chrome.webNavigation.onCommitted.addListener((details) => {
 // Remove tabs from tracking when closed
 chrome.tabs.onRemoved.addListener((tabId) => {
   if (activeTabsMap.has(tabId)) {
+    // Credit time accrued so far before dropping the tab
+    flushActiveTime();
     activeTabsMap.delete(tabId);
   }
 });
@@ -353,6 +329,12 @@ chrome.runtime.onInstalled.addListener(() => {
   initialize();
 });
 
+// Re-initialize on browser startup (onInstalled does not fire then)
+chrome.runtime.onStartup.addListener(() => {
+  console.log("Browser started, initializing");
+  initialize();
+});
+
 // Handle messages from content scripts
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Handle visibility change messages from content scripts
@@ -366,14 +348,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     console.log(
       `Tab ${tabId} (${domain}) visibility changed to ${isActive}`,
       message.source || "unknown source",
-      message.timestamp ? new Date(message.timestamp).toISOString() : ""
+      message.timestamp ? new Date(message.timestamp).toISOString() : "",
     );
 
-    // Update the active tabs map with domain information
-    activeTabsMap.set(tabId, {
-      domain,
-      isActive,
-      lastUpdateTime: Date.now(),
+    // Credit time accrued under the previous state, then update and re-check.
+    flushActiveTime().then(() => {
+      activeTabsMap.set(tabId, {
+        domain,
+        isActive,
+        lastUpdateTime: Date.now(),
+      });
+      flushActiveTime();
     });
 
     // Get current active domains for debugging
@@ -387,7 +372,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       });
 
     console.log(
-      `Active tracked domains: ${Array.from(activeDomains).join(", ")}`
+      `Active tracked domains: ${Array.from(activeDomains).join(", ")}`,
     );
 
     // Send a response to acknowledge receipt of the visibility change
@@ -412,7 +397,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       console.log(
         `Received ping from ${tabInfo}`,
         message.source ? `Source: ${message.source}` : "",
-        message.reconnectAttempt ? `Attempt: ${message.reconnectAttempt}` : ""
+        message.reconnectAttempt ? `Attempt: ${message.reconnectAttempt}` : "",
       );
 
       // If this is from a facebook tab, make sure it's in our tracking map
@@ -421,7 +406,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // Record it in our active tabs map if not already there
         if (!activeTabsMap.has(sender.tab.id)) {
           console.log(
-            `Adding previously unknown tab ${sender.tab.id} to tracking`
+            `Adding previously unknown tab ${sender.tab.id} to tracking`,
           );
           activeTabsMap.set(sender.tab.id, {
             domain: domain,
@@ -432,8 +417,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
 
       // Update the ping response to get actual values from websiteData if possible
-      let currentTimeSpent = timeSpent;
-      let currentTimeLimit = timeLimit;
+      let currentTimeSpent = 0;
+      let currentTimeLimit = 1800; // 30 minutes default
       let isTracked = false;
 
       if (sender.tab && sender.tab.url) {
@@ -466,14 +451,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "getActiveTabsInfo") {
     try {
       const activeTabs = Array.from(activeTabsMap.entries())
-        .filter(([_, active]) => active)
-        .map(([id, _]) => id);
+        .filter(([, data]) => data?.isActive)
+        .map(([id]) => id);
 
       console.log("Providing active tabs info:", activeTabs);
       sendResponse({
         activeTabs: activeTabs,
         totalTabs: activeTabsMap.size,
-        timeSpent: timeSpent,
       });
     } catch (error) {
       console.error("Error providing active tabs info:", error);
@@ -482,29 +466,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  // Handle force time update request
+  // Handle force time update request — flush accumulated active time now
   if (message.action === "forceTimeUpdate") {
-    try {
-      console.log("Force time update requested. Current timeSpent:", timeSpent);
-
-      // Save current time spent to storage
-      chrome.storage.local
-        .set({ timeSpent })
-        .then(() => {
-          console.log("Time counter manually updated to:", timeSpent);
-          sendResponse({ success: true });
-        })
-        .catch((error) => {
-          console.error("Error updating time:", error);
-          sendResponse({ success: false, error: error.message });
-        });
-
-      return true; // Required for async response
-    } catch (error) {
-      console.error("Error in forceTimeUpdate handler:", error);
-      sendResponse({ success: false, error: error.message });
-      return true;
-    }
+    flushActiveTime()
+      .then(() => sendResponse({ success: true }))
+      .catch((error) =>
+        sendResponse({ success: false, error: error.message }),
+      );
+    return true; // Required for async response
   }
 
   // Handle website specific actions
@@ -605,7 +574,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const timeLimitSecs = newLimitMinutes * 60; // Convert minutes to seconds
 
     console.log(
-      `Setting new default time limit: ${newLimitMinutes} minutes (${timeLimitSecs} seconds)`
+      `Setting new default time limit: ${newLimitMinutes} minutes (${timeLimitSecs} seconds)`,
     );
 
     // Add or update facebook.com if it exists in websiteData
@@ -762,52 +731,32 @@ async function getTabDomain(tabId) {
 }
 
 // Reset data for a new day
-function resetDailyData() {
+async function resetDailyData() {
   const today = new Date().toDateString();
 
-  if (lastResetDate !== today) {
-    console.log("New day detected, resetting time counters");
+  // Load latest data from storage. The in-memory copy may be empty on a cold
+  // service-worker wake (e.g. triggered by the daily alarm), so we must not
+  // reset from it — that would clear nothing yet advance lastResetDate.
+  const data = await chrome.storage.local.get(["websiteData", "lastResetDate"]);
+  const storedResetDate = data.lastResetDate || lastResetDate;
+
+  if (storedResetDate === today) {
     lastResetDate = today;
-
-    // Reset time for all websites
-    Object.keys(websiteData).forEach((domain) => {
-      websiteData[domain].timeSpent = 0;
-    });
-
-    // Save updated data
-    chrome.storage.local.set({
-      websiteData,
-      lastResetDate,
-    });
+    return;
   }
+
+  console.log("New day detected, resetting time counters");
+  websiteData = data.websiteData || websiteData;
+  lastResetDate = today;
+
+  // Reset time and warning flags for all websites
+  Object.keys(websiteData).forEach((domain) => {
+    websiteData[domain].timeSpent = 0;
+    websiteData[domain].warned = false;
+  });
+
+  await chrome.storage.local.set({ websiteData, lastResetDate });
 }
-
-// Add a new website to track
-// async function addWebsite(domain, timeLimit = 30) {
-//   if (!domain) return false;
-
-//   // Normalize domain
-//   domain = domain.toLowerCase();
-//   if (domain.startsWith("www.")) {
-//     domain = domain.substring(4);
-//   }
-
-//   // Add to websiteData if not exists
-//   if (!websiteData[domain]) {
-//     websiteData[domain] = {
-//       timeSpent: 0, // Time in seconds
-//       timeLimit: timeLimit * 60, // Convert minutes to seconds
-//     };
-
-//     // Save to storage
-//     await chrome.storage.local.set({ websiteData });
-//     console.log(
-//       `Added new website: ${domain} with limit: ${timeLimit} minutes`
-//     );
-//     return true;
-//   }
-//   return false;
-// }
 
 // Add a new website to track
 async function addWebsite(domain, timeLimit = 30) {
@@ -837,7 +786,7 @@ async function addWebsite(domain, timeLimit = 30) {
       // Save to storage
       await chrome.storage.local.set({ websiteData: currentWebsiteData });
       console.log(
-        `Added new website: ${domain} with limit: ${timeLimit} minutes`
+        `Added new website: ${domain} with limit: ${timeLimit} minutes`,
       );
 
       // Notify any existing tabs with this domain that they are now being tracked
@@ -849,7 +798,7 @@ async function addWebsite(domain, timeLimit = 30) {
           const tabDomain = extractDomain(tab.url);
           if (tabDomain === domain) {
             console.log(
-              `Notifying tab ${tab.id} that ${domain} is now tracked`
+              `Notifying tab ${tab.id} that ${domain} is now tracked`,
             );
             chrome.tabs
               .sendMessage(tab.id, {
@@ -857,7 +806,7 @@ async function addWebsite(domain, timeLimit = 30) {
                 domain: domain,
               })
               .catch((err) =>
-                console.log(`Could not notify tab ${tab.id}: ${err.message}`)
+                console.log(`Could not notify tab ${tab.id}: ${err.message}`),
               );
           }
         }
@@ -958,74 +907,9 @@ async function resetWebsiteTime(domain) {
   return true;
 }
 
-// Update time spent for active tabs
-function updateTime() {
-  // Get the current time
-  const now = Date.now();
-  let anyActive = false;
-
-  // Process each active tab
-  activeTabsMap.forEach((tabData, tabId) => {
-    const { domain, isActive, lastUpdateTime } = tabData;
-
-    // Skip inactive tabs or tabs without valid domains
-    if (!isActive || !domain || !shouldTrackDomain(domain)) return;
-
-    // Calculate time difference since last update
-    const timeDiff = (now - lastUpdateTime) / 1000; // in seconds
-
-    // Update time spent for this domain
-    if (websiteData[domain]) {
-      websiteData[domain].timeSpent += timeDiff;
-      anyActive = true;
-    }
-
-    // Update last update time
-    tabData.lastUpdateTime = now;
-  });
-
-  // Save updated data if any tab was active
-  if (anyActive) {
-    chrome.storage.local.set({ websiteData });
-  }
-
-  // Check time limits for all websites
-  checkTimeLimitsAndBlock();
-}
-
-// Change the second instance of checkTimeLimits to a different name
-// Check if any website has reached its time limit
-async function checkTimeLimitsAndBlock() {
-  for (const [domain, data] of Object.entries(websiteData)) {
-    if (data.timeSpent >= data.timeLimit) {
-      // Find all tabs with this domain
-      const tabs = await chrome.tabs.query({});
-
-      for (const tab of tabs) {
-        const tabDomain = extractDomain(tab.url);
-
-        // If this tab matches the domain that reached limit
-        if (tabDomain === domain) {
-          // Send time limit reached message to content script
-          try {
-            await chrome.tabs.sendMessage(tab.id, {
-              action: "timeLimitReached",
-              domain: domain,
-              timeSpent: data.timeSpent,
-              timeLimit: data.timeLimit,
-            });
-          } catch (e) {
-            console.error(`Error sending limit message to tab ${tab.id}:`, e);
-          }
-        }
-      }
-    }
-  }
-}
-
 // Handle errors safely
 const handleError = (error) => {
-  console.error("Facebook Limiter error:", error.message);
+  console.error("FocusGuard error:", error.message);
 };
 
 // Initialize when extension loads - wrapped in try/catch to handle errors
@@ -1033,4 +917,36 @@ try {
   initialize();
 } catch (error) {
   handleError(error);
+}
+
+// Register the alarm listener at top level (synchronously) so the service
+// worker re-attaches it on wake-up before the alarm event is dispatched.
+chrome.alarms?.onAlarm.addListener((alarm) => {
+  if (alarm.name === DAILY_RESET_ALARM) {
+    console.log("Daily reset triggered by alarm at:", new Date().toString());
+    resetDailyData();
+  } else if (alarm.name === TICK_ALARM) {
+    // Heartbeat: catch up on active time and enforce limits after a sleep
+    flushActiveTime();
+  }
+});
+
+function setupMidnightReset() {
+  // Create or update the midnight reset alarm
+  chrome.alarms?.create(DAILY_RESET_ALARM, {
+    // Set first alarm for the next midnight (00:05 AM)
+    when: getNextMidnight(),
+    // Then repeat daily
+    periodInMinutes: 24 * 60,
+  });
+}
+
+// Helper function to calculate the next midnight (plus 5 minutes)
+function getNextMidnight() {
+  const now = new Date();
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setHours(0, 5, 0, 0); // 00:05:00 AM
+
+  return tomorrow.getTime();
 }
