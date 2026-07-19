@@ -63,13 +63,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
     try {
       const domain = extractDomain(website);
-      if (domain && timeLimit >= 1 && timeLimit <= 240) {
+      if (domain && timeLimit >= 1 && timeLimit <= 480) {
         addWebsite(domain, timeLimit);
         websiteInput.value = "";
         timeLimitInput.value = "30";
       } else {
         showNotification(
-          "Please enter a valid domain and time limit (1-240 minutes)",
+          "Please enter a valid domain and time limit (1-480 minutes)",
           "error"
         );
       }
@@ -211,7 +211,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const timeLimitInput = document.getElementById("timeLimit");
     let timeLimit = parseInt(timeLimitInput.value, 10);
 
-    if (timeLimit >= 1 && timeLimit <= 240) {
+    if (timeLimit >= 1 && timeLimit <= 480) {
       console.log(
         `Saving new time limit for ${selectedWebsite}: ${timeLimit} minutes (${
           timeLimit * 60
@@ -248,7 +248,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       );
     } else {
-      alert("Please enter a time limit between 1 and 240 minutes.");
+      alert("Please enter a time limit between 1 and 480 minutes.");
     }
   });
 });
@@ -482,7 +482,7 @@ function updateDisplay() {
   });
 
   // Update site name display if available
-  const siteNameDisplay = document.getElementById("selectedSiteName");
+  const siteNameDisplay = document.getElementById("currentWebsite");
   if (siteNameDisplay) {
     siteNameDisplay.textContent = selectedWebsite || "No website selected";
   }
@@ -519,9 +519,9 @@ function updateDisplay() {
     const timeLimitSecs =
       typeof siteData.timeLimit === "number" ? siteData.timeLimit : 1800;
 
-    // Display time spent in mm:ss format
+    // Display time spent in mm:ss format (timeSpent is fractional seconds)
     const timeSpentMinutes = Math.floor(timeSpentSecs / 60);
-    const timeSpentSeconds = timeSpentSecs % 60;
+    const timeSpentSeconds = Math.floor(timeSpentSecs % 60);
     document.getElementById("timeSpent").textContent = `${timeSpentMinutes}:${
       timeSpentSeconds < 10 ? "0" : ""
     }${timeSpentSeconds}`;
@@ -568,7 +568,7 @@ function updateDisplay() {
     if (timeRemaining) {
       const secondsRemaining = Math.max(0, timeLimitSecs - timeSpentSecs);
       const minutesRemaining = Math.floor(secondsRemaining / 60);
-      const secondsRemainingDisplay = secondsRemaining % 60;
+      const secondsRemainingDisplay = Math.floor(secondsRemaining % 60);
 
       timeRemaining.textContent = `${minutesRemaining}:${
         secondsRemainingDisplay < 10 ? "0" : ""
@@ -603,107 +603,70 @@ function debugStorage() {
   });
 }
 
-// Update debug information
+// Format seconds as "Xm Ys"
+function formatDuration(totalSecs) {
+  const secs = Math.floor(totalSecs || 0);
+  return `${Math.floor(secs / 60)}m ${secs % 60}s`;
+}
+
+// Wire the "Force Time Update" button (re-attached whenever the panel re-renders)
+function wireForceUpdateButton() {
+  const btn = document.getElementById("refreshTimeButton");
+  if (!btn) return;
+  btn.addEventListener("click", () => {
+    sendMessageWithRetry({ action: "forceTimeUpdate" }, (response) => {
+      if (response?.success) {
+        updateDisplay();
+        updateDebugInfo();
+        showNotification("Time counter updated!", "success");
+      }
+    });
+  });
+}
+
+// Update debug information — shows per-domain storage + live active-tab count
 function updateDebugInfo() {
   const debugElement = document.getElementById("debugInfo");
+  if (!debugElement) return;
 
-  // Call our debug function
-  debugStorage().then(() => {});
+  chrome.storage.local.get(["websiteData", "lastResetDate"], (data) => {
+    const websiteData = data.websiteData || {};
+    const domains = Object.keys(websiteData).sort();
 
-  chrome.storage.local.get(null, (allData) => {
-    console.log("All storage data:", allData);
+    const rows = domains.length
+      ? domains
+          .map((domain) => {
+            const site = websiteData[domain];
+            return `${domain}: ${formatDuration(site.timeSpent)} / ${Math.floor(
+              (site.timeLimit || 0) / 60
+            )}m limit`;
+          })
+          .join("<br>")
+      : "No websites tracked yet";
 
-    // Format time data for display
-    const timeSpentSecs = allData.timeSpent || 0;
-    const timeSpentMins = Math.floor(timeSpentSecs / 60);
-    const timeSpentSecs_remainder = timeSpentSecs % 60;
-
-    const timeLimitSecs = allData.timeLimit || 30 * 60;
-    const timeLimitMins = Math.floor(timeLimitSecs / 60);
-
-    chrome.tabs.query({ url: "*://*.facebook.com/*" }, (tabs) => {
-      console.log("Current Facebook tabs:", tabs);
-
-      // Initialize debug HTML with basic info (will be updated with active tab info)
-      let debugHTML = `
+    const render = (activeCount) => {
+      debugElement.innerHTML = `
         <div>
-          <strong>Storage Info:</strong><br>
-          Time Spent: ${timeSpentMins}m ${timeSpentSecs_remainder}s (${timeSpentSecs} seconds)<br>
-          Time Limit: ${timeLimitMins}m (${timeLimitSecs} seconds)<br>
-          Last Reset: ${allData.lastResetDate || "None"}<br>
-          <strong>Facebook Tabs:</strong> ${
-            tabs.length
-          } (loading active count...)<br>
+          <strong>Tracked Sites:</strong><br>
+          ${rows}<br>
+          <strong>Last Reset:</strong> ${data.lastResetDate || "None"}<br>
+          <strong>Active Tabs:</strong> ${activeCount}<br>
           <button id="refreshTimeButton" style="margin-top:5px;font-size:12px;">Force Time Update</button>
         </div>
       `;
+      wireForceUpdateButton();
+    };
 
-      // Set initial content
-      debugElement.innerHTML = debugHTML;
-
-      // Add click handler for the force update button
-      const refreshButton = document.getElementById("refreshTimeButton");
-      if (refreshButton) {
-        refreshButton.addEventListener("click", () => {
-          sendMessageWithRetry({ action: "forceTimeUpdate" }, (response) => {
-            if (response?.success) {
-              updateDisplay();
-              updateDebugInfo();
-              alert("Time counter updated!");
-            }
-          });
-        });
-      }
-
-      // Try to get active tabs information from background script
-      try {
-        chrome.runtime.sendMessage(
-          { action: "getActiveTabsInfo" },
-          (activeTabsInfo) => {
-            // Only update if we got a valid response
-            if (activeTabsInfo && !chrome.runtime.lastError) {
-              const activeTabsCount = activeTabsInfo.activeTabs?.length || 0;
-
-              // Update the debug HTML with active tab count
-              const updatedDebugHTML = `
-              <div>
-                <strong>Storage Info:</strong><br>
-                Time Spent: ${timeSpentMins}m ${timeSpentSecs_remainder}s (${timeSpentSecs} seconds)<br>
-                Time Limit: ${timeLimitMins}m (${timeLimitSecs} seconds)<br>
-                Last Reset: ${allData.lastResetDate || "None"}<br>
-                <strong>Facebook Tabs:</strong> ${
-                  tabs.length
-                } (${activeTabsCount} active)<br>
-                <button id="refreshTimeButton" style="margin-top:5px;font-size:12px;">Force Time Update</button>
-              </div>
-            `;
-
-              // Update the content
-              debugElement.innerHTML = updatedDebugHTML;
-
-              // Re-add click handler since we replaced the HTML
-              const refreshButton =
-                document.getElementById("refreshTimeButton");
-              if (refreshButton) {
-                refreshButton.addEventListener("click", () => {
-                  sendMessageWithRetry(
-                    { action: "forceTimeUpdate" },
-                    (response) => {
-                      if (response?.success) {
-                        updateDisplay();
-                        updateDebugInfo();
-                        alert("Time counter updated!");
-                      }
-                    }
-                  );
-                });
-              }
-            }
-          }
-        );
-      } catch (error) {
-        console.error("Error getting active tabs info:", error);
-      }
-    });
+    // Render immediately, then refine with live active-tab count from background
+    render("…");
+    try {
+      chrome.runtime.sendMessage({ action: "getActiveTabsInfo" }, (info) => {
+        if (info && !chrome.runtime.lastError) {
+          render(info.activeTabs?.length || 0);
+        }
+      });
+    } catch (error) {
+      console.error("Error getting active tabs info:", error);
+    }
   });
 }
