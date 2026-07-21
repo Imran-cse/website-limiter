@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
-  "name": "FocusGuard",
+  "name": "FocusGuard — Website Blocker & Time Limit",
   "short_name": "FocusGuard",
   "author": "Imran Hossain",
-  "version": "1.1",
-  "description": "Set daily time limits for any website to boost productivity.",
+  "version": "1.1.2",
+  "description": "Website blocker for focus & productivity. Set a daily time limit on any site and get blocked when your time runs out.",
   "permissions": [
     "storage",
     "webNavigation",

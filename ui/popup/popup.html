@@ -3,10 +3,12 @@
 
 <head>
   <meta charset="utf-8">
-  <title>FocusGuard</title>
+  <title>FocusGuard — Website Blocker & Time Limit</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
   <link rel="stylesheet" href="/styles/global.css">
 </head>
 
@@ -20,7 +22,12 @@
         <span class="brand-name">FocusGuard</span>
       </div>
       <button id="gotoSettings" class="icon-btn" title="Settings" aria-label="Settings">
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round">
+          <circle cx="12" cy="12" r="3" />
+          <path
+            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg>
       </button>
     </header>
 
@@ -28,8 +35,9 @@
     <div class="today-summary">
       <div class="ring-wrap">
         <svg width="78" height="78" viewBox="0 0 78 78" class="ring-svg">
-          <circle cx="39" cy="39" r="33" fill="none" class="ring-track" stroke-width="9"/>
-          <circle id="summaryRing" cx="39" cy="39" r="33" fill="none" class="ring-fill" stroke-width="9" stroke-linecap="round" stroke-dasharray="207" stroke-dashoffset="207"/>
+          <circle cx="39" cy="39" r="33" fill="none" class="ring-track" stroke-width="9" />
+          <circle id="summaryRing" cx="39" cy="39" r="33" fill="none" class="ring-fill" stroke-width="9"
+            stroke-linecap="round" stroke-dasharray="207" stroke-dashoffset="207" />
         </svg>
         <div class="ring-label"><span id="summaryPct">0%</span></div>
       </div>
@@ -43,7 +51,10 @@
     <!-- add current site -->
     <div class="track-cta">
       <button id="addCurrentButton" class="btn-primary btn-block">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+          stroke-linecap="round">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
         Track this site
       </button>
     </div>
@@ -54,7 +65,11 @@
     <!-- empty state -->
     <div id="emptyState" class="empty-state" hidden>
       <div class="empty-icon">
-        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 7v5l3 2" />
+        </svg>
       </div>
       <div class="empty-title">No sites tracked yet</div>
       <div class="empty-sub">Add one to start guarding your focus.</div>
@@ -63,7 +78,10 @@
     <!-- footer -->
     <footer class="pop-footer">
       <button id="addAnother" class="link-btn accent">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+          stroke-linecap="round">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
         Add another site
       </button>
       <button id="footerSettings" class="link-btn muted">Settings</button>
@@ -75,7 +93,10 @@
     <header class="pop-header">
       <div class="brand">
         <button id="backToday" class="icon-btn bordered" title="Back" aria-label="Back">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
         </button>
         <span class="brand-name">Add a website</span>
       </div>
@@ -98,8 +119,13 @@
       <div class="field">
         <label class="field-label" for="newWebsiteDomain">Website domain</label>
         <div class="input-wrap">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="input-icon"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20"/></svg>
-          <input id="newWebsiteDomain" placeholder="facebook.com" class="input mono" autocomplete="off" spellcheck="false" />
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            class="input-icon">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M2 12h20M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20" />
+          </svg>
+          <input id="newWebsiteDomain" placeholder="facebook.com" class="input mono" autocomplete="off"
+            spellcheck="false" />
         </div>
       </div>
 
@@ -124,7 +150,10 @@
       <div class="advanced">
         <button id="advToggle" class="adv-head" aria-expanded="false">
           <span>Advanced</span>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" class="adv-chevron"><path d="M6 9l6 6 6-6"/></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+            stroke-linecap="round" class="adv-chevron">
+            <path d="M6 9l6 6 6-6" />
+          </svg>
         </button>
         <div id="advBody" class="adv-body" hidden>
           <div class="adv-row"><span>Last reset</span><span id="advLastReset" class="mono">—</span></div>

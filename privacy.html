@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FocusGuard — Privacy Policy</title>
+  <style>
+    :root {
+      --bg: #f7f7fb;
+      --card: #fff;
+      --text: #24262e;
+      --muted: #5b6270;
+      --accent: #5b4fe0;
+      --border: #e7e7ef;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+    }
+
+    .wrap {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 48px 24px 80px;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .mark {
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      background: linear-gradient(150deg, #6b5ce8, #5340c9);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .mark span {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      border: 2.8px solid #fff;
+      border-top-color: transparent;
+      transform: rotate(35deg);
+    }
+
+    h1 {
+      font-size: 28px;
+      margin: 0;
+      letter-spacing: -0.02em;
+    }
+
+    .updated {
+      color: var(--muted);
+      font-size: 14px;
+      margin: 4px 0 32px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px 30px;
+      margin-bottom: 18px;
+    }
+
+    h2 {
+      font-size: 18px;
+      margin: 0 0 10px;
+      letter-spacing: -0.01em;
+    }
+
+    p {
+      margin: 0 0 12px;
+    }
+
+    ul {
+      margin: 0 0 4px;
+      padding-left: 20px;
+    }
+
+    li {
+      margin-bottom: 6px;
+    }
+
+    .lead {
+      font-size: 17px;
+      color: var(--text);
+    }
+
+    .pill {
+      display: inline-block;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--accent);
+      background: #ecebfb;
+      border-radius: 20px;
+      padding: 4px 12px;
+      margin-bottom: 16px;
+    }
+
+    a {
+      color: var(--accent);
+    }
+
+    code {
+      background: #eef;
+      padding: 1px 6px;
+      border-radius: 5px;
+      font-size: 0.9em;
+    }
+
+    footer {
+      color: var(--muted);
+      font-size: 13px;
+      text-align: center;
+      margin-top: 32px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <header>
+      <div class="mark"><span></span></div>
+      <h1>FocusGuard — Privacy Policy</h1>
+    </header>
+    <p class="updated">Last updated: 20 July 2026</p>
+
+    <div class="card">
+      <div class="pill">Runs entirely on your device</div>
+      <p class="lead">FocusGuard does not collect, transmit, sell, or share any personal information.
+        Everything the extension needs to work is stored locally in your own browser and never leaves your device.</p>
+    </div>
+
+    <div class="card">
+      <h2>What FocusGuard stores</h2>
+      <p>To do its job, FocusGuard saves the following in your browser's local extension storage
+        (<code>chrome.storage.local</code>):</p>
+      <ul>
+        <li>The list of websites (domains) you choose to track.</li>
+        <li>The daily time limit you set for each site.</li>
+        <li>How much active time you've spent on each site today.</li>
+        <li>The date of the last daily reset.</li>
+      </ul>
+      <p>This data stays on your computer. It is not sent to us or to any third party, and there are no
+        analytics, advertising, or tracking scripts in the extension.</p>
+    </div>
+
+    <div class="card">
+      <h2>What FocusGuard does <em>not</em> do</h2>
+      <ul>
+        <li>No account, sign-up, or login is required.</li>
+        <li>No browsing history is collected or stored.</li>
+        <li>No page content is read, recorded, or transmitted.</li>
+        <li>No data is sent to any server, and none is sold or shared.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>Permissions &amp; why they're needed</h2>
+      <ul>
+        <li><b>Storage</b> — to remember your tracked sites, limits, and daily usage on your device.</li>
+        <li><b>Web Navigation</b> — to detect when a tab loads a site you track, so timing and blocking work.</li>
+        <li><b>Tabs</b> — to read the current tab's domain (for "Track this site"), to find tabs of a site that
+          reached its limit so they can be blocked, and to close a tab from the block screen.</li>
+        <li><b>Notifications</b> — to show an optional heads-up when you're approaching a limit.</li>
+        <li><b>Alarms</b> — to reset counters daily at midnight and keep timing accurate after the browser sleeps.</li>
+        <li><b>Host access (all sites)</b> — because you may set a limit on <em>any</em> website of your choosing;
+          this access is used only to measure active time on the sites you pick and to show the local block page.
+          It is never used to read or send page content.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>Data retention &amp; removal</h2>
+      <p>Your data lives only in your browser. You can clear it any time from the extension's Advanced →
+        "Reset all settings", or by removing the extension, which deletes all of its stored data.</p>
+    </div>
+
+    <div class="card">
+      <h2>Children's privacy</h2>
+      <p>FocusGuard collects no personal data from anyone, including children.</p>
+    </div>
+
+    <div class="card">
+      <h2>Changes to this policy</h2>
+      <p>If this policy changes, the updated date above will change and the revised policy will be posted at this
+        same URL.</p>
+    </div>
+
+    <div class="card">
+      <h2>Contact</h2>
+      <p>Questions about this policy? Email <a href="mailto:imran.cse.ku@gmail.com">imran.cse.ku@gmail.com</a>.</p>
+    </div>
+
+    <footer>© 2026 Imran Hossain · FocusGuard</footer>
+  </div>
+</body>
+
+</html>
